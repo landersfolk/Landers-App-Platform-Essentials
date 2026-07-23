@@ -31,7 +31,11 @@ listener "tcp" {
 # you're ready — see the README for the retry_join pattern needed at 3 replicas).
 storage "raft" {
   path    = "/vault/data"
-  node_id = "${HOSTNAME}"
+  # Hardcoded, not templated: Vault's HCL parser does not do shell-style ${VAR}
+  # substitution, and this StatefulSet runs at replicas: 1, so the pod name is always
+  # deterministically vault-prod-0 anyway. Revisit if this is ever scaled to replicas: 3
+  # (would need each pod's own node_id — see the README's HA note).
+  node_id = "vault-prod-0"
 }
 
 # AWS KMS auto-unseal. Key created 2026-07-23 (alias landers-qa-vault-unseal), region
@@ -46,7 +50,7 @@ seal "awskms" {
 # Internal-only — this Vault has no public DNS name (see the TLS note above), only
 # in-cluster pods reach it, via the vault-prod ClusterIP Service.
 api_addr     = "http://vault-prod:8200"
-cluster_addr = "http://${HOSTNAME}.vault-prod-internal:8201"
+cluster_addr = "http://vault-prod-0.vault-prod-internal:8201"
 
 # Keep memory locked (no swap) so secret material never touches disk swap space.
 # Requires IPC_LOCK capability on the container, same as the existing dev Deployment already has.

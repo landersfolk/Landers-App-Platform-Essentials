@@ -48,7 +48,10 @@ data:
 
     storage "raft" {
       path    = "/vault/data"
-      node_id = "${HOSTNAME}"
+      # Hardcoded, not templated: Vault's HCL parser does not do shell-style ${VAR}
+      # substitution, and this StatefulSet runs at replicas: 1, so the pod name is
+      # always deterministically vault-prod-0. Revisit if scaled to replicas: 3.
+      node_id = "vault-prod-0"
     }
 
     # KMS key: landers-qa-vault-unseal, created 2026-07-23. Access via
@@ -59,7 +62,7 @@ data:
     }
 
     api_addr     = "http://vault-prod:8200"
-    cluster_addr = "http://${HOSTNAME}.vault-prod-internal:8201"
+    cluster_addr = "http://vault-prod-0.vault-prod-internal:8201"
 
     disable_mlock = false
 
