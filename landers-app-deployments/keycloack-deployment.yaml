@@ -28,7 +28,11 @@ data:
   # access to manage realms/clients/users, instead of kcadm.sh via kubectl exec every
   # time. Does NOT affect the iss claim on tokens gateway-service validates — that's
   # governed by KC_HOSTNAME above, untouched.
-  KC_HOSTNAME_ADMIN: "qa-auth.landersfolk.com"
+  # MUST be a full URL (scheme required) — a bare hostname fails with "Provided
+  # hostname-admin is not a valid URL". https:// here reflects what's externally
+  # visible (the ALB terminates TLS), even though the connection from ALB to this
+  # pod itself is plain HTTP (KC_PROXY=none, KC_HTTP_ENABLED=true).
+  KC_HOSTNAME_ADMIN: "https://keycloak-qa.landersfolk.com"
   KC_HOSTNAME_STRICT: "true"
   KC_HTTP_ENABLED: "true"
 ---
