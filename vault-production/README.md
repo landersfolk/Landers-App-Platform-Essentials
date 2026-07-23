@@ -43,8 +43,11 @@ keeps working exactly as before — nothing in this directory is wired into it.
 4. **Initialize** (once, ever — re-running this on an already-initialized Vault is a
    no-op error, not a reset):
    ```
-   kubectl exec -it vault-prod-0 -- vault operator init -key-shares=5 -key-threshold=3
+   kubectl exec -it vault-prod-0 -- vault operator init -recovery-shares=5 -recovery-threshold=3
    ```
+   (Note: `-key-shares`/`-key-threshold` are Shamir-only flags and will fail against a
+   seal "awskms" config with "parameters ... not applicable to seal type awskms" — use
+   `-recovery-shares`/`-recovery-threshold` instead, as above.)
    This prints 5 recovery key shares and the initial root token. With KMS auto-unseal
    there's no Shamir unseal step needed on ordinary restarts — the recovery keys exist
    only for disaster recovery / re-keying the seal itself, and should be split among

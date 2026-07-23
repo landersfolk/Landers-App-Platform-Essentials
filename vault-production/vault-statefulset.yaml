@@ -20,7 +20,8 @@
 #    profile for a plain EC2/k3s node, as here; IRSA if this is ever run on EKS instead).
 # 3. kubectl apply -f vault-statefulset.yaml
 # 4. Exec into the pod and run `vault operator init` EXACTLY ONCE
-#    (`kubectl exec -it vault-prod-0 -- vault operator init -key-shares=5 -key-threshold=3`).
+#    (`kubectl exec -it vault-prod-0 -- vault operator init -recovery-shares=5 -recovery-threshold=3`
+#    — NOT -key-shares/-key-threshold, those are Shamir-only flags and fail against awskms).
 #    This prints 5 recovery key shares + the initial root token — with awskms auto-unseal
 #    there's no Shamir unseal step on restart, but you still get recovery keys (needed only
 #    for disaster recovery / re-keying) and the root token (needed only to bootstrap
