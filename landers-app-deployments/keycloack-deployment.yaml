@@ -39,29 +39,26 @@ data:
   KC_HOSTNAME_ADMIN: "https://keycloak-qa.landersfolk.com"
   KC_HOSTNAME_STRICT: "true"
   KC_HTTP_ENABLED: "true"
----
-# Secret - Passwords
-# Deliberately NOT real values here — this file is committed to a git repo, and a real
-# admin/DB password belongs there even less than the "admin123"/"keycloak123" placeholders
-# this replaced. After `kubectl apply`, overwrite both with real values via a one-off
-# command that never gets committed:
+# Secret "keycloak-secret" is DELIBERATELY NOT DEFINED IN THIS FILE.
+#
+# It used to be here with placeholder stringData values, on the assumption that you'd
+# `kubectl apply -f` this file once, then separately inject real values over it. That
+# assumption was wrong in practice (discovered 2026-07-24, after real debugging pain):
+# every subsequent `kubectl apply -f` of THIS file — e.g. for an unrelated ConfigMap/
+# Deployment tweak — silently RESET the Secret back to the committed placeholder values,
+# repeatedly clobbering the real DB/admin password and causing Keycloak to crash-loop
+# with "password authentication failed" for no apparent reason (looked like a new bug
+# each time; it was the same one, recurring).
+#
+# So: this file only ever touches the ConfigMap/Deployment/Service. Create the Secret
+# ONCE, out-of-band, and never re-run this exact command as part of a routine
+# `kubectl apply -f` of this file — only if the DB/admin password itself actually changes:
 #   kubectl create secret generic keycloak-secret --namespace default \
 #     --from-literal=KEYCLOAK_ADMIN=admin \
 #     --from-literal=KEYCLOAK_ADMIN_PASSWORD='<real admin password>' \
-#     --from-literal=KC_DB_PASSWORD='<the keycloak RDS user password from Part 6.1>' \
-#     --dry-run=client -o yaml | kubectl apply -f -
-# (that --dry-run=client -o yaml | kubectl apply -f - pattern updates the existing Secret
-# in place rather than erroring that it already exists)
-apiVersion: v1
-kind: Secret
-metadata:
-  name: keycloak-secret
-  namespace: default
-type: Opaque
-stringData:
-  KEYCLOAK_ADMIN: "admin"
-  KEYCLOAK_ADMIN_PASSWORD: "REPLACE_VIA_KUBECTL_AFTER_APPLY"
-  KC_DB_PASSWORD: "REPLACE_VIA_KUBECTL_AFTER_APPLY"
+#     --from-literal=KC_DB_PASSWORD='<the keycloak RDS user password from Part 6.1>'
+# (no --dry-run=client -o yaml | kubectl apply -f - this time — plain `kubectl create`,
+# specifically so a re-run of THIS file can never touch it again)
 ---
 # Deployment — no readiness/liveness probes configured yet. Fine for QA (a crashed
 # container still gets noticed via `kubectl get pods` showing CrashLoopBackOff either
