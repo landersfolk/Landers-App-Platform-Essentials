@@ -22,7 +22,11 @@ data:
   # http://keycloak:8180, unchanged from the original dev/qa profile). This is
   # SEPARATE from KC_HOSTNAME_ADMIN below — changing this would break gateway-service's
   # token validation; only KC_HOSTNAME_ADMIN is meant to be public-facing.
-  KC_HOSTNAME: "keycloak"
+  # MUST be a full URL once KC_HOSTNAME_ADMIN is also set (Keycloak validation:
+  # "hostname must be set to a URL when hostname-admin is set") — a bare hostname
+  # worked fine on its own, but not combined with hostname-admin. Value is otherwise
+  # unchanged in meaning: same host:port gateway-service already calls.
+  KC_HOSTNAME: "http://keycloak:8180"
   # Admin console/API only, on its own hostname (Keycloak's "hostname v2" provider
   # supports this split natively) — added 2026-07-24 purely for convenient browser
   # access to manage realms/clients/users, instead of kcadm.sh via kubectl exec every
