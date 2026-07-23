@@ -10,17 +10,25 @@ data:
   # RDS endpoint set 2026-07-23 (landers-db instance, eu-west-1).
   KC_DB_URL: "jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/keycloak"
   KC_DB_USERNAME: "keycloak"
-  # No reverse proxy sits in front of Keycloak — gateway-service (the only caller,
-  # confirmed 2026-07-23: it's the OAuth2 client AND resource server, clients never
-  # reach Keycloak directly) connects over plain in-cluster HTTP, no ALB/TLS involved.
+  # gateway-service (the only caller for auth — confirmed 2026-07-23: it's the OAuth2
+  # client AND resource server, app clients never reach Keycloak directly) connects
+  # over plain in-cluster HTTP. KC_PROXY stays "none" for that internal path — the
+  # admin console below DOES sit behind the ALB, but Keycloak's hostname v2 provider
+  # handles that per-hostname (see KC_HOSTNAME_ADMIN), not via a global proxy setting.
   KC_PROXY: "none"
   # Explicit strict hostname pinned to the in-cluster Service DNS name (not a public
-  # domain — Keycloak is ClusterIP-only, never exposed via the ALB, since only
-  # gateway-service talks to it). Keeps the iss claim on issued tokens deterministic
-  # and matching what gateway-service's issuer-uri/jwk-set-uri config expects
-  # (see EC2_QA_Environment_Setup_Guide.txt Part 9.3 — that config stays pointed at
-  # http://keycloak:8180, unchanged from the original dev/qa profile).
+  # domain — this is what gateway-service's issuer-uri/jwk-set-uri config expects,
+  # see EC2_QA_Environment_Setup_Guide.txt Part 9.3 — stays pointed at
+  # http://keycloak:8180, unchanged from the original dev/qa profile). This is
+  # SEPARATE from KC_HOSTNAME_ADMIN below — changing this would break gateway-service's
+  # token validation; only KC_HOSTNAME_ADMIN is meant to be public-facing.
   KC_HOSTNAME: "keycloak"
+  # Admin console/API only, on its own hostname (Keycloak's "hostname v2" provider
+  # supports this split natively) — added 2026-07-24 purely for convenient browser
+  # access to manage realms/clients/users, instead of kcadm.sh via kubectl exec every
+  # time. Does NOT affect the iss claim on tokens gateway-service validates — that's
+  # governed by KC_HOSTNAME above, untouched.
+  KC_HOSTNAME_ADMIN: "qa-auth.landersfolk.com"
   KC_HOSTNAME_STRICT: "true"
   KC_HTTP_ENABLED: "true"
 ---
@@ -121,6 +129,11 @@ spec:
             configMapKeyRef:
               name: keycloak-config
               key: KC_HOSTNAME
+        - name: KC_HOSTNAME_ADMIN
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_HOSTNAME_ADMIN
         - name: KC_HOSTNAME_STRICT
           valueFrom:
             configMapKeyRef:
@@ -139,12 +152,11 @@ spec:
             cpu: 1000m
             memory: 2Gi
 ---
-# Service — ClusterIP (default), NOT LoadBalancer. Confirmed 2026-07-23: no external
-# client ever talks to Keycloak directly — gateway-service is the only caller (see
-# EC2_QA_Environment_Setup_Guide.txt Part 6, top note), reaching it in-cluster at
-# http://keycloak:8180. No ALB target group, no public hostname, no ACM cert
-# involvement for Keycloak at all — that's specifically for gateway-service (Part 11)
-# and the two Angular apps (Part 12), which DO need public routing.
+# Service — type: LoadBalancer (changed 2026-07-24), so k3s's ServiceLB binds this to
+# a real host port (8180) for the ALB to reach, for admin-console access only (see
+# KC_HOSTNAME_ADMIN above). App auth traffic is unaffected either way — gateway-service
+# reaches this Service at http://keycloak:8180 whether it's ClusterIP or LoadBalancer,
+# since LoadBalancer Services in Kubernetes remain fully reachable via ClusterIP too.
 apiVersion: v1
 kind: Service
 metadata:
@@ -153,7 +165,7 @@ metadata:
   labels:
     app: keycloak
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
   - name: http
     port: 8180
