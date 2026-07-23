@@ -5,13 +5,19 @@
 # alongside the dev setup with zero collision, in case you want to smoke-test it in the
 # same cluster before pointing it at a real production cluster/account.
 #
+# QA deployment note (2026-07-23): this instance runs on k3s on a single EC2 host, not
+# EKS — there is no IRSA, and KMS access instead comes from the EC2 instance profile
+# (landers-ec2-s3-role + its vault-kms-unseal inline policy) via the instance metadata
+# service, which any pod on the node can reach regardless of its K8s ServiceAccount. TLS
+# is disabled below (see vault.hcl's listener block) since this Vault is ClusterIP-only,
+# never reachable outside the pod network — so step 1 below is skipped for this QA setup.
+#
 # ── First-time bootstrap sequence ──────────────────────────────────────────────────
-# 1. Provision a TLS cert for vault.landers.com (cert-manager Certificate resource, or
-#    any cert you already have) into a Secret named `vault-prod-tls` in this namespace,
-#    with keys `tls.crt` / `tls.key` (matches vault.hcl's tls_cert_file/tls_key_file).
-#    Not included here — depends on your cert-manager/ACM setup.
-# 2. Create the AWS KMS key referenced in vault.hcl, and grant this pod's IAM role
-#    (IRSA on EKS) kms:Encrypt/Decrypt/DescribeKey on it.
+# 1. (Skipped for QA — see note above) Provision a TLS cert for vault.landers.com
+#    (cert-manager Certificate resource, or any cert you already have) into a Secret
+#    named `vault-prod-tls` in this namespace, with keys `tls.crt` / `tls.key`.
+# 2. Create the AWS KMS key referenced in vault.hcl, and grant access to it (EC2 instance
+#    profile for a plain EC2/k3s node, as here; IRSA if this is ever run on EKS instead).
 # 3. kubectl apply -f vault-statefulset.yaml
 # 4. Exec into the pod and run `vault operator init` EXACTLY ONCE
 #    (`kubectl exec -it vault-prod-0 -- vault operator init -key-shares=5 -key-threshold=3`).
@@ -33,11 +39,11 @@ data:
   vault.hcl: |
     ui = true
 
+    # TLS disabled — this Vault is ClusterIP-only, never reachable outside the pod
+    # network. Re-enable tls_cert_file/tls_key_file if ever exposed beyond the cluster.
     listener "tcp" {
-      address       = "0.0.0.0:8200"
-      tls_cert_file = "/vault/tls/tls.crt"
-      tls_key_file  = "/vault/tls/tls.key"
-      tls_min_version = "tls12"
+      address     = "0.0.0.0:8200"
+      tls_disable = true
     }
 
     storage "raft" {
@@ -45,13 +51,15 @@ data:
       node_id = "${HOSTNAME}"
     }
 
+    # KMS key: landers-qa-vault-unseal, created 2026-07-23. Access via
+    # landers-ec2-s3-role's inline vault-kms-unseal policy (EC2 instance profile).
     seal "awskms" {
-      region     = "REPLACE_WITH_AWS_REGION"
-      kms_key_id = "REPLACE_WITH_KMS_KEY_ID"
+      region     = "eu-west-1"
+      kms_key_id = "ee8ceade-aa4b-4e1a-8290-73732dcc5851"
     }
 
-    api_addr     = "https://vault.landers.com:8200"
-    cluster_addr = "https://${HOSTNAME}.vault-prod-internal:8201"
+    api_addr     = "http://vault-prod:8200"
+    cluster_addr = "http://${HOSTNAME}.vault-prod-internal:8201"
 
     disable_mlock = false
 
@@ -70,7 +78,7 @@ spec:
   selector:
     app: vault-prod
   ports:
-    - name: https
+    - name: http
       port: 8200
     - name: cluster
       port: 8201
@@ -89,7 +97,7 @@ spec:
   selector:
     app: vault-prod
   ports:
-    - name: https
+    - name: http
       port: 8200
       targetPort: 8200
 
@@ -114,9 +122,10 @@ spec:
       labels:
         app: vault-prod
     spec:
-      # IRSA (EKS) or equivalent — grants KMS access for auto-unseal without a static
-      # AWS access key ever touching this pod. Replace with your actual service account.
-      serviceAccountName: vault-prod
+      # No serviceAccountName override — KMS access comes from the EC2 instance
+      # profile (landers-ec2-s3-role), not a K8s-ServiceAccount-bound identity like
+      # IRSA (that's an EKS-specific mechanism; this is plain k3s on one EC2 host).
+      # The default ServiceAccount in this namespace is fine as-is.
       containers:
         - name: vault
           image: hashicorp/vault:1.18
@@ -124,7 +133,7 @@ spec:
           args: ["server", "-config=/vault/config/vault.hcl"]
           ports:
             - containerPort: 8200
-              name: https
+              name: http
             - containerPort: 8201
               name: cluster
           securityContext:
@@ -132,7 +141,7 @@ spec:
               add: ["IPC_LOCK"]
           env:
             - name: VAULT_ADDR
-              value: "https://127.0.0.1:8200"
+              value: "http://127.0.0.1:8200"
             - name: HOSTNAME
               valueFrom:
                 fieldRef:
@@ -140,23 +149,20 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /vault/config
-            - name: tls
-              mountPath: /vault/tls
-              readOnly: true
             - name: data
               mountPath: /vault/data
           readinessProbe:
             httpGet:
               path: /v1/sys/health?standbyok=true
               port: 8200
-              scheme: HTTPS
+              scheme: HTTP
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /v1/sys/health?standbyok=true&uninitcode=200
               port: 8200
-              scheme: HTTPS
+              scheme: HTTP
             initialDelaySeconds: 30
             periodSeconds: 30
           resources:
@@ -170,9 +176,6 @@ spec:
         - name: config
           configMap:
             name: vault-prod-config
-        - name: tls
-          secret:
-            secretName: vault-prod-tls   # provisioned separately — see step 1 above
   volumeClaimTemplates:
     - metadata:
         name: data

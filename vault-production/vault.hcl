@@ -16,18 +16,14 @@
 
 ui = true
 
+# TLS deliberately disabled for the QA deployment: this Vault is never reachable
+# outside the k3s pod network (no LoadBalancer Service, no ALB route to it — only
+# other pods in this cluster talk to it over plain HTTP on the ClusterIP Service).
+# Re-enable tls_cert_file/tls_key_file (see git history / vault-production/README.md)
+# if this pattern is ever promoted to a real internet-facing production Vault.
 listener "tcp" {
-  address       = "0.0.0.0:8200"
-  tls_cert_file = "/vault/tls/tls.crt"
-  tls_key_file  = "/vault/tls/tls.key"
-  tls_min_version = "tls12"
-
-  # Vault's own health/readiness checks (used by the StatefulSet probes and by any load
-  # balancer in front of it) are allowed without a client cert even though the listener
-  # itself is TLS-only for everything else.
-  telemetry {
-    unauthenticated_metrics_access = false
-  }
+  address     = "0.0.0.0:8200"
+  tls_disable = true
 }
 
 # Raft integrated storage — replicated across however many pods this StatefulSet runs
@@ -38,17 +34,19 @@ storage "raft" {
   node_id = "${HOSTNAME}"
 }
 
-# AWS KMS auto-unseal. Create a dedicated KMS key first (aliased e.g. alias/landers-vault-unseal)
-# and grant this pod's IAM role kms:Encrypt/Decrypt/DescribeKey on it (via IRSA if on EKS —
-# do NOT hand Vault a static AWS access key). Replace the placeholders below.
+# AWS KMS auto-unseal. Key created 2026-07-23 (alias landers-qa-vault-unseal), region
+# eu-west-1. Access is granted via landers-ec2-s3-role's inline "vault-kms-unseal" policy
+# on the EC2 instance profile — NOT a static AWS access key (this pod picks up credentials
+# automatically from the instance metadata service via that role).
 seal "awskms" {
-  region     = "REPLACE_WITH_AWS_REGION"       # e.g. us-east-1
-  kms_key_id = "REPLACE_WITH_KMS_KEY_ID"        # the key's ID or ARN, not the alias
+  region     = "eu-west-1"
+  kms_key_id = "ee8ceade-aa4b-4e1a-8290-73732dcc5851"
 }
 
-# Update once the vault.landers.com DNS record (see the Route 53 setup) exists.
-api_addr     = "https://vault.landers.com:8200"
-cluster_addr = "https://${HOSTNAME}.vault-internal:8201"
+# Internal-only — this Vault has no public DNS name (see the TLS note above), only
+# in-cluster pods reach it, via the vault-prod ClusterIP Service.
+api_addr     = "http://vault-prod:8200"
+cluster_addr = "http://${HOSTNAME}.vault-prod-internal:8201"
 
 # Keep memory locked (no swap) so secret material never touches disk swap space.
 # Requires IPC_LOCK capability on the container, same as the existing dev Deployment already has.
