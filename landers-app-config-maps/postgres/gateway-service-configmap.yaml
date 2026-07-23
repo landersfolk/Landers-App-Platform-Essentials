@@ -1,0 +1,319 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-service-config
+  namespace: default
+data:
+  application.yaml: |-
+    # --- 1. GLOBAL SETTINGS ---
+    spring:
+      cloud:
+        kubernetes:
+          config:
+            enabled: true
+            name: gateway-service-config
+            include-profile-specific-sources: false
+
+    jwt:
+      auth:
+        converter:
+          resource-id: landers-app
+          principle-attribute: preferred_username
+
+    ---
+    # --- 2. DEV PROFILE ---
+    spring:
+      config:
+        activate:
+          on-profile: dev
+      security:
+        oauth2:
+          resourceserver:
+            jwt:
+              issuer-uri: http://localhost:8180/realms/landers-realm
+              jwk-set-uri: http://localhost:8180/realms/landers-realm/protocol/openid-connect/certs
+      kafka:
+        bootstrapServers: localhost:9093
+        groupId: gateway-service-group
+        topics:
+          userRegistrationLandlord: user-registration-landlord
+          userRegistrationRequester: user-registration-requester
+          userRegistrationAdmin: user-registration-admin
+          userRegistrationLandlordDlt: user-registration-landlord-dlt
+          userRegistrationRequesterDlt: user-registration-requester-dlt
+          userRegistrationAdminDlt: user-registration-admin-dlt
+        producer:
+          acks: all
+          retries: 3
+          deliveryTimeoutMs: 30000
+          requestTimeoutMs: 20000
+        consumer:
+          autoOffsetReset: earliest
+          enableAutoCommit: false
+          trustedPackages: io.landers.commons.cloud.events
+          defaultValueType: io.landers.commons.cloud.events.UserRegisterEvent
+      cloud:
+        kubernetes:
+          discovery:
+            enabled: true
+        gateway:
+          default-filters:
+            - TokenRelay
+          server:
+            webflux:
+              routes:
+                - id: admin-service
+                  uri: http://localhost:7071
+                  predicates:
+                    - Path=/api/v1/admin/**
+                - id: landlord-service
+                  uri: http://localhost:7073
+                  predicates:
+                    - Path=/api/v1/landlords/**
+                - id: requester-service
+                  uri: http://localhost:7072
+                  predicates:
+                    - Path=/api/v1/requester/**
+                - id: user-service
+                  uri: http://localhost:7075
+                  predicates:
+                    - Path=/api/v1/users/**
+                - id: corporate-service
+                  uri: http://localhost:7074
+                  predicates:
+                    - Path=/api/v1/corporate/**
+                - id: booking-service
+                  uri: http://localhost:7076
+                  predicates:
+                    - Path=/api/v1/bookings/**,/api/v1/landings/**,/api/v1/quickstops/**
+                - id: payment-service
+                  uri: http://localhost:7077
+                  predicates:
+                    - Path=/api/v1/payments/**
+                - id: notification-service
+                  uri: http://localhost:7078
+                  predicates:
+                    - Path=/api/v1/notifications/**
+
+    keycloak:
+      auth-server-url: http://localhost:8180
+      tokenUrl: http://localhost:8180/realms/landers-realm/protocol/openid-connect/token
+      logoutUrl: http://localhost:8180/realms/landers-realm/protocol/openid-connect/logout
+      grantType: password
+      realm: landers-realm
+
+    services:
+      user-service:
+        url: http://localhost:7075
+      landlord-service:
+        url: http://localhost:7073
+      corporate-service:
+        url: http://localhost:7074
+
+    server:
+      port: 7070
+
+    logging:
+      level:
+        root: INFO
+        io.landers: DEBUG
+        org.springframework.cloud.gateway: DEBUG
+        org.springframework.web: DEBUG
+
+    ---
+    # --- 3. QA PROFILE ---
+    spring:
+      config:
+        activate:
+          on-profile: qa
+      security:
+        oauth2:
+          resourceserver:
+            jwt:
+              issuer-uri: http://keycloak:8180/realms/landers-realm
+              jwk-set-uri: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/certs
+      kafka:
+        bootstrapServers: kafka-broker:9092
+        groupId: gateway-service-group
+        topics:
+          userRegistrationLandlord: user-registration-landlord
+          userRegistrationRequester: user-registration-requester
+          userRegistrationAdmin: user-registration-admin
+          userRegistrationLandlordDlt: user-registration-landlord-dlt
+          userRegistrationRequesterDlt: user-registration-requester-dlt
+          userRegistrationAdminDlt: user-registration-admin-dlt
+        producer:
+          acks: all
+          retries: 3
+          deliveryTimeoutMs: 30000
+          requestTimeoutMs: 20000
+        consumer:
+          autoOffsetReset: earliest
+          enableAutoCommit: false
+          trustedPackages: io.landers.commons.cloud.events
+          defaultValueType: io.landers.commons.cloud.events.UserRegisterEvent
+      cloud:
+        kubernetes:
+          discovery:
+            enabled: true
+        gateway:
+          default-filters:
+            - TokenRelay
+          server:
+            webflux:
+              routes:
+                - id: admin-service
+                  uri: lb://admin-service
+                  predicates:
+                    - Path=/api/v1/admin/**
+                - id: landlord-service
+                  uri: lb://landlord-service
+                  predicates:
+                    - Path=/api/v1/landlords/**
+                - id: requester-service
+                  uri: lb://requester-service
+                  predicates:
+                    - Path=/api/v1/requester/**
+                - id: user-service
+                  uri: lb://user-service
+                  predicates:
+                    - Path=/api/v1/users/**
+                - id: corporate-service
+                  uri: lb://corporate-service
+                  predicates:
+                    - Path=/api/v1/corporates/**
+                - id: booking-service
+                  uri: lb://booking-service
+                  predicates:
+                    - Path=/api/v1/bookings/**,/api/v1/landings/**,/api/v1/quickstops/**
+                - id: payment-service
+                  uri: lb://payment-service
+                  predicates:
+                    - Path=/api/v1/payments/**
+                - id: notification-service
+                  uri: lb://notification-service
+                  predicates:
+                    - Path=/api/v1/notifications/**
+
+    keycloak:
+      auth-server-url: http://keycloak:8180
+      tokenUrl: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/token
+      logoutUrl: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/logout
+      grantType: password
+      realm: landers-realm
+
+    services:
+      user-service:
+        url: http://user-service:7075
+      landlord-service:
+        url: http://landlord-service:7073
+      corporate-service:
+        url: http://corporate-service:7074
+
+    server:
+      port: 7070
+
+    logging:
+      level:
+        root: INFO
+        io.landers: INFO
+
+    ---
+    # --- 4. PROD PROFILE ---
+    spring:
+      config:
+        activate:
+          on-profile: prod
+      security:
+        oauth2:
+          resourceserver:
+            jwt:
+              issuer-uri: http://keycloak:8180/realms/landers-realm
+              jwk-set-uri: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/certs
+      kafka:
+        bootstrapServers: kafka-broker:9092
+        groupId: gateway-service-group
+        topics:
+          userRegistrationLandlord: user-registration-landlord
+          userRegistrationRequester: user-registration-requester
+          userRegistrationAdmin: user-registration-admin
+          userRegistrationLandlordDlt: user-registration-landlord-dlt
+          userRegistrationRequesterDlt: user-registration-requester-dlt
+          userRegistrationAdminDlt: user-registration-admin-dlt
+        producer:
+          acks: all
+          retries: 5
+          deliveryTimeoutMs: 45000
+          requestTimeoutMs: 30000
+        consumer:
+          autoOffsetReset: earliest
+          enableAutoCommit: false
+          trustedPackages: io.landers.commons.cloud.events
+          defaultValueType: io.landers.commons.cloud.events.UserRegisterEvent
+      cloud:
+        kubernetes:
+          discovery:
+            enabled: true
+        gateway:
+          default-filters:
+            - TokenRelay
+          server:
+            webflux:
+              routes:
+                - id: admin-service
+                  uri: lb://admin-service
+                  predicates:
+                    - Path=/api/v1/admin/**
+                - id: landlord-service
+                  uri: lb://landlord-service
+                  predicates:
+                    - Path=/api/v1/landlords/**
+                - id: requester-service
+                  uri: lb://requester-service
+                  predicates:
+                    - Path=/api/v1/requester/**
+                - id: user-service
+                  uri: lb://user-service
+                  predicates:
+                    - Path=/api/v1/users/**
+                - id: corporate-service
+                  uri: lb://corporate-service
+                  predicates:
+                    - Path=/api/v1/corporate/**
+                - id: booking-service
+                  uri: lb://booking-service
+                  predicates:
+                    - Path=/api/v1/bookings/**,/api/v1/landings/**,/api/v1/quickstops/**
+                - id: payment-service
+                  uri: lb://payment-service
+                  predicates:
+                    - Path=/api/v1/payments/**
+                - id: notification-service
+                  uri: lb://notification-service
+                  predicates:
+                    - Path=/api/v1/notifications/**
+
+
+    keycloak:
+      auth-server-url: http://keycloak:8180
+      tokenUrl: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/token
+      logoutUrl: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/logout
+      grantType: password
+      realm: landers-realm
+
+    services:
+      user-service:
+        url: http://user-service:7075
+      landlord-service:
+        url: http://landlord-service:7073
+      corporate-service:
+        url: http://corporate-service:7074
+
+
+    server:
+      port: 7070
+
+    logging:
+      level:
+        root: WARN
+        io.landers: INFO

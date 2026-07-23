@@ -1,0 +1,590 @@
+# ========================================================
+# 1. RBAC CONFIGURATION
+# Allows Spring Boot to read its own configuration from K8s
+# ========================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: config-reader
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: config-reader-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: default
+roleRef:
+  kind: Role
+  name: config-reader
+  apiGroup: rbac.authorization.k8s.io
+
+# ==========================================
+# 2. PERSISTENT STORAGE (PVCs)
+# ==========================================
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: artifactory-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 5Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+
+# ==========================================
+# 3. VAULT (Secrets Management)
+# ==========================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-server
+spec:
+  selector:
+    app: vault
+  ports:
+    - port: 8200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+spec:
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      containers:
+      - name: vault
+        image: hashicorp/vault:1.18
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK"]
+        env:
+        - name: VAULT_DEV_ROOT_TOKEN_ID
+          value: "root"
+        command: ["vault"]
+        args: ["server", "-dev", "-dev-root-token-id=root", "-dev-listen-address=0.0.0.0:8200"]
+        ports:
+        - containerPort: 8200
+
+# ==========================================
+# 4. MYSQL DATABASE
+# ==========================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-db
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "password"
+        - name: MYSQL_DATABASE
+          value: landers-app-lander-db
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: mysql-data
+
+# ==========================================
+# 5. POSTGRES DATABASE WITH POSTGIS
+# ==========================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgis/postgis:17-3.5
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "password"
+        - name: POSTGRES_DB
+          value: landers-app-lander-db
+        - name: POSTGRES_HOST_AUTH_METHOD
+          value: "scram-sha-256"
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: storage
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: postgres-data
+
+# ============================================================
+# 6. KAFKA & KAFDROP
+# Kafka StatefulSet (KRaft mode - no ZooKeeper)
+# Image: apache/kafka:3.9.2
+#
+# Two listeners:
+#   INTERNAL (9092) → used by pods inside the cluster
+#   EXTERNAL (9093) → used when port-forwarding from local dev
+#                     advertises localhost:9093 so Kafka metadata
+#                     points back to localhost and not kafka-broker
+# ============================================================
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  labels:
+    app: kafka
+spec:
+  serviceName: kafka-broker
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: apache/kafka:3.9.2
+          ports:
+            - name: internal
+              containerPort: 9092
+            - name: external
+              containerPort: 9093
+            - name: controller
+              containerPort: 9094
+          env:
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@localhost:9094"
+
+            # INTERNAL → in-cluster traffic (your app pod → kafka-broker:9092)
+            # EXTERNAL → local dev via port-forward (localhost:9093)
+            # CONTROLLER → KRaft internal only
+            - name: KAFKA_LISTENERS
+              value: "INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093,CONTROLLER://0.0.0.0:9094"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "INTERNAL://kafka-broker:9092,EXTERNAL://localhost:9093"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "INTERNAL"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+            - name: KAFKA_LOG_RETENTION_HOURS
+              value: "168"
+            # Generate your own with: kubectl exec -it kafka-0 -- kafka-storage.sh random-uuid
+            - name: CLUSTER_ID
+              value: "MkU3OEVBNTcwNTJENDM2Qk"
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+
+---
+# ============================================================
+# Kafka Service
+#   Port 9092 → in-cluster access (kafka-broker:9092)
+#   Port 9093 → port-forward for local dev
+#
+# Local dev usage:
+#   kubectl port-forward svc/kafka-broker 9093:9093
+#   spring.kafka.bootstrap-servers=localhost:9093
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-broker
+  labels:
+    app: kafka
+spec:
+  type: ClusterIP
+  selector:
+    app: kafka
+  ports:
+    - name: internal
+      port: 9092
+      targetPort: 9092
+      protocol: TCP
+    - name: external
+      port: 9093
+      targetPort: 9093
+      protocol: TCP
+
+---
+# ============================================================
+# Kafdrop Deployment
+# Image: obsidiandynamics/kafdrop:4.2.0
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafdrop
+  labels:
+    app: kafdrop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafdrop
+  template:
+    metadata:
+      labels:
+        app: kafdrop
+    spec:
+      containers:
+        - name: kafdrop
+          image: obsidiandynamics/kafdrop:4.2.0
+          ports:
+            - containerPort: 9000
+          env:
+            - name: KAFKA_BROKERCONNECT
+              value: "kafka-broker:9092"
+            - name: SERVER_SERVLET_CONTEXTPATH
+              value: "/"
+            - name: JVM_OPTS
+              value: "-Xms64M -Xmx128M"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+---
+# ============================================================
+# Kafdrop Service
+# Access locally: kubectl port-forward svc/kafdrop 9000:9000
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafdrop
+  labels:
+    app: kafdrop
+spec:
+  type: ClusterIP
+  selector:
+    app: kafdrop
+  ports:
+    - name: http
+      port: 9000
+      targetPort: 9000
+      protocol: TCP
+
+# ==========================================
+# 7. ARTIFACTORY (JFrog)
+# ==========================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jfrog-artifactory
+spec:
+  selector:
+    app: artifactory
+  ports:
+    - name: api
+      port: 8082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: artifactory
+spec:
+  selector:
+    matchLabels:
+      app: artifactory
+  template:
+    metadata:
+      labels:
+        app: artifactory
+    spec:
+      containers:
+      - name: artifactory
+        image: releases-docker.jfrog.io/jfrog/artifactory-oss:7.71.5
+        resources:
+          requests:
+            memory: "2Gi"
+        ports:
+        - containerPort: 8082
+        volumeMounts:
+        - name: storage
+          mountPath: /var/opt/jfrog/artifactory
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: artifactory-data
+
+# ==========================================
+# 8. KEYCLOAK (Identity & Access Management)
+# ==========================================
+---
+# ConfigMap - Basic Keycloak Settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-config
+  namespace: default
+data:
+  KC_DB: "mysql"
+  KC_DB_URL: "jdbc:mysql://mysql-db:3306/keycloak"
+  KC_DB_USERNAME: "keycloak"
+  KC_HOSTNAME_STRICT: "false"
+  KC_HTTP_ENABLED: "true"
+---
+# Secret - Passwords
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-secret
+  namespace: default
+type: Opaque
+stringData:
+  KEYCLOAK_ADMIN: "admin"
+  KEYCLOAK_ADMIN_PASSWORD: "admin123"
+  KC_DB_PASSWORD: "keycloak123"
+---
+# Deployment WITHOUT health checks (for testing)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: default
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+      - name: keycloak
+        image: quay.io/keycloak/keycloak:26.0.7
+        args: ["start-dev"]
+        ports:
+        - name: http
+          containerPort: 8080
+        env:
+        - name: KEYCLOAK_ADMIN
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-secret
+              key: KEYCLOAK_ADMIN
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-secret
+              key: KEYCLOAK_ADMIN_PASSWORD
+        - name: KC_DB
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_DB
+        - name: KC_DB_URL
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_DB_URL
+        - name: KC_DB_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_DB_USERNAME
+        - name: KC_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-secret
+              key: KC_DB_PASSWORD
+        - name: KC_HOSTNAME_STRICT
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_HOSTNAME_STRICT
+        - name: KC_HTTP_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_HTTP_ENABLED
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: default
+  labels:
+    app: keycloak
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8180
+    targetPort: 8080
+  selector:
+    app: keycloak
+
+# ==========================================
+# 9. REDIS (Cache)
+# ==========================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-db
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7.4-alpine
+        imagePullPolicy: IfNotPresent
+        args: ["redis-server", "--save", "", "--appendonly", "no"]
+        ports:
+        - containerPort: 6379

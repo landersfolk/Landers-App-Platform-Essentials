@@ -1,0 +1,184 @@
+# Vault PRODUCTION Kubernetes manifests — StatefulSet + Services + ConfigMap.
+#
+# Deliberately named "vault-prod-*" throughout (never "vault"/"vault-server", which are
+# the existing local dev Vault's Deployment/Service names) so this can be applied
+# alongside the dev setup with zero collision, in case you want to smoke-test it in the
+# same cluster before pointing it at a real production cluster/account.
+#
+# ── First-time bootstrap sequence ──────────────────────────────────────────────────
+# 1. Provision a TLS cert for vault.landers.com (cert-manager Certificate resource, or
+#    any cert you already have) into a Secret named `vault-prod-tls` in this namespace,
+#    with keys `tls.crt` / `tls.key` (matches vault.hcl's tls_cert_file/tls_key_file).
+#    Not included here — depends on your cert-manager/ACM setup.
+# 2. Create the AWS KMS key referenced in vault.hcl, and grant this pod's IAM role
+#    (IRSA on EKS) kms:Encrypt/Decrypt/DescribeKey on it.
+# 3. kubectl apply -f vault-statefulset.yaml
+# 4. Exec into the pod and run `vault operator init` EXACTLY ONCE
+#    (`kubectl exec -it vault-prod-0 -- vault operator init -key-shares=5 -key-threshold=3`).
+#    This prints 5 recovery key shares + the initial root token — with awskms auto-unseal
+#    there's no Shamir unseal step on restart, but you still get recovery keys (needed only
+#    for disaster recovery / re-keying) and the root token (needed only to bootstrap
+#    policies/AppRole below, then should be revoked — see README.md).
+# 5. Run setup-approle.sh (this directory) using that root token to create per-service
+#    policies + AppRole roles, replacing the dev setup's shared "root" token entirely.
+# 6. Seed real secrets per environment/service (see README.md — NOT vault-seed-secrets.sh,
+#    that script's dummy dev values are not appropriate for production).
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-prod-config
+  namespace: default
+data:
+  vault.hcl: |
+    ui = true
+
+    listener "tcp" {
+      address       = "0.0.0.0:8200"
+      tls_cert_file = "/vault/tls/tls.crt"
+      tls_key_file  = "/vault/tls/tls.key"
+      tls_min_version = "tls12"
+    }
+
+    storage "raft" {
+      path    = "/vault/data"
+      node_id = "${HOSTNAME}"
+    }
+
+    seal "awskms" {
+      region     = "REPLACE_WITH_AWS_REGION"
+      kms_key_id = "REPLACE_WITH_KMS_KEY_ID"
+    }
+
+    api_addr     = "https://vault.landers.com:8200"
+    cluster_addr = "https://${HOSTNAME}.vault-prod-internal:8201"
+
+    disable_mlock = false
+
+---
+# Headless service for Raft cluster peer communication (only matters once replicas > 1).
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-prod-internal
+  namespace: default
+  labels:
+    app: vault-prod
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: vault-prod
+  ports:
+    - name: https
+      port: 8200
+    - name: cluster
+      port: 8201
+
+---
+# Client-facing service — what every microservice's VAULT_HOST/VAULT_ADDR points to.
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-prod
+  namespace: default
+  labels:
+    app: vault-prod
+spec:
+  type: ClusterIP
+  selector:
+    app: vault-prod
+  ports:
+    - name: https
+      port: 8200
+      targetPort: 8200
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vault-prod
+  namespace: default
+spec:
+  serviceName: vault-prod-internal
+  # Start at 1 to get real Raft persistence immediately with the least operational
+  # complexity. Bump to 3 (odd number, for quorum) once ready for HA — Raft's retry_join
+  # will need each pod to list its peers; the official HashiCorp Helm chart handles this
+  # automatically if you'd rather adopt that instead of hand-rolling it further here.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault-prod
+  template:
+    metadata:
+      labels:
+        app: vault-prod
+    spec:
+      # IRSA (EKS) or equivalent — grants KMS access for auto-unseal without a static
+      # AWS access key ever touching this pod. Replace with your actual service account.
+      serviceAccountName: vault-prod
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.18
+          command: ["vault"]
+          args: ["server", "-config=/vault/config/vault.hcl"]
+          ports:
+            - containerPort: 8200
+              name: https
+            - containerPort: 8201
+              name: cluster
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"]
+          env:
+            - name: VAULT_ADDR
+              value: "https://127.0.0.1:8200"
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: config
+              mountPath: /vault/config
+            - name: tls
+              mountPath: /vault/tls
+              readOnly: true
+            - name: data
+              mountPath: /vault/data
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true
+              port: 8200
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true&uninitcode=200
+              port: 8200
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+      volumes:
+        - name: config
+          configMap:
+            name: vault-prod-config
+        - name: tls
+          secret:
+            secretName: vault-prod-tls   # provisioned separately — see step 1 above
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+        # storageClassName: gp3   # uncomment and set to your cluster's SSD storage class
