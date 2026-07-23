@@ -13,7 +13,7 @@
 #   ./setup-approle.sh
 set -euo pipefail
 
-: "${VAULT_ADDR:?Set VAULT_ADDR to the production Vault's URL, e.g. https://vault.landers.com:8200}"
+: "${VAULT_ADDR:?Set VAULT_ADDR to the production Vault URL, e.g. https://vault.landers.com:8200}"
 : "${VAULT_TOKEN:?Set VAULT_TOKEN to a root/admin token — only needed for this one-time bootstrap}"
 
 SERVICES="admin-service landlord-service requester-service gateway-service user-service booking-service payment-service notification-service corporate-service"
