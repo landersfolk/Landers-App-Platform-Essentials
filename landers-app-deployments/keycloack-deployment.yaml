@@ -10,12 +10,16 @@ data:
   # RDS endpoint set 2026-07-23 (landers-db instance, eu-west-1).
   KC_DB_URL: "jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/keycloak"
   KC_DB_USERNAME: "keycloak"
-  # gateway-service (the only caller for auth — confirmed 2026-07-23: it's the OAuth2
-  # client AND resource server, app clients never reach Keycloak directly) connects
-  # over plain in-cluster HTTP. KC_PROXY stays "none" for that internal path — the
-  # admin console below DOES sit behind the ALB, but Keycloak's hostname v2 provider
-  # handles that per-hostname (see KC_HOSTNAME_ADMIN), not via a global proxy setting.
-  KC_PROXY: "none"
+  # KC_PROXY is a GLOBAL setting (unlike KC_HOSTNAME/KC_HOSTNAME_ADMIN, which ARE
+  # per-path) — "edge" tells Keycloak to trust the X-Forwarded-Proto/X-Forwarded-For
+  # headers the ALB adds automatically, so it correctly knows requests via the admin
+  # console arrived over HTTPS (needed for secure-cookie handling and correct URL
+  # generation in the admin console SPA — without this, the console showed a generic
+  # untranslated "somethingWentWrong" error, found 2026-07-24). This does NOT affect
+  # gateway-service's direct internal calls to http://keycloak:8180 — those requests
+  # simply have no forwarded headers to trust, so Keycloak falls back to the real
+  # (correctly plain-HTTP) connection info for that path either way.
+  KC_PROXY: "edge"
   # Explicit strict hostname pinned to the in-cluster Service DNS name (not a public
   # domain — this is what gateway-service's issuer-uri/jwk-set-uri config expects,
   # see EC2_QA_Environment_Setup_Guide.txt Part 9.3 — stays pointed at
