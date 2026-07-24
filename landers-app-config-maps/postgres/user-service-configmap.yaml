@@ -81,7 +81,7 @@ data:
         activate:
           on-profile: qa
       datasource:
-        url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
+        url: jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/landers-app-lander-db?sslmode=require
         driver-class-name: org.postgresql.Driver
         hikari:
           maximum-pool-size: 10

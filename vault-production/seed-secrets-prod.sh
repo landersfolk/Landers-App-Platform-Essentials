@@ -48,7 +48,7 @@ if [ "$SERVICE_NAME" = "notification-service" ]; then
   PATH_ARGS+=("firebase.credentialsJson=${FIREBASE_CREDENTIALS_JSON:-}")
 fi
 
-echo "Writing secret/landers-app/${SERVICE_NAME}/prod ..."
-vault kv put "secret/landers-app/${SERVICE_NAME}/prod" "${PATH_ARGS[@]}"
+echo "Writing secret/landers-app/${SERVICE_NAME}/qa ..."
+vault kv put "secret/landers-app/${SERVICE_NAME}/qa" "${PATH_ARGS[@]}"
 echo "Done. Verify (values redacted by Vault's own kv get -field listing, not shown here):"
-vault kv get -format=json "secret/landers-app/${SERVICE_NAME}/prod" | python3 -c "import sys,json; print(list(json.load(sys.stdin)['data']['data'].keys()))"
+vault kv get -format=json "secret/landers-app/${SERVICE_NAME}/qa" | python3 -c "import sys,json; print(list(json.load(sys.stdin)['data']['data'].keys()))"

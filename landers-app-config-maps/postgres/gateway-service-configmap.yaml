@@ -181,7 +181,7 @@ data:
                 - id: corporate-service
                   uri: lb://corporate-service
                   predicates:
-                    - Path=/api/v1/corporates/**
+                    - Path=/api/v1/corporate/**
                 - id: booking-service
                   uri: lb://booking-service
                   predicates:
