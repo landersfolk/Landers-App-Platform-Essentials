@@ -79,17 +79,20 @@ keeps working exactly as before — nothing in this directory is wired into it.
    production credentials live, never type real secrets into shell history if avoidable
    (prefix the command with a space, if your shell's `HISTCONTROL` is set to
    `ignorespace`, or use `set +o history` / a `.env` file loaded and then deleted).
-8. **Point each service at production Vault.** Every service already has an additive
-   `prod`-profile Vault override baked into its `application.yml` (see
-   `bugfix_vault_production_setup_2026_07_21` memory / this file's own git history for
-   which commit added it) — it activates automatically when `SPRING_PROFILES_ACTIVE=prod`
-   and expects these env vars on the pod:
-   - `VAULT_HOST` — e.g. `vault-prod` (in-cluster) or `vault.landers.com` (external)
-   - `VAULT_PORT` — defaults to `8200`
+8. **Point each service at production Vault.** Every service's `application.yml` has a
+   single, non-profile-specific `spring.cloud.vault` block — the same file works for
+   dev, qa, and prod, driven entirely by env vars (as of 2026-07-24; see
+   `qa_backend_deploy_2026_07_24` memory for why the earlier `prod`-only profile
+   override was replaced):
+   - `VAULT_HOST` — e.g. `vault-prod` (in-cluster) or `vault.landers.com` (external).
+     Defaults to `localhost`.
+   - `VAULT_PORT` — defaults to `8200`.
+   - `VAULT_SCHEME` — `http` or `https`. Defaults to `http`.
+   - `VAULT_AUTH_METHOD` — set to `APPROLE` for qa/prod. Defaults to `TOKEN` (dev).
    - `VAULT_ROLE_ID` / `VAULT_SECRET_ID` — from step 5's output, injected via your secret
-     store, never committed
-   The **dev** profile is completely unaffected by any of this — it keeps using plaintext
-   HTTP + the shared `root` token exactly as it does today, no env vars required.
+     store, never committed. Only used when `VAULT_AUTH_METHOD=APPROLE`.
+   Leaving all of these unset reproduces the exact dev behavior (plaintext HTTP + the
+   shared `root` token) — no separate profile block to keep in sync anymore.
 
 ## Ongoing operations
 
@@ -99,7 +102,7 @@ keeps working exactly as before — nothing in this directory is wired into it.
   secret store and roll the deployment.
 - **Adding a 10th microservice later**: copy an existing policy file, add the service
   name to `setup-approle.sh`'s `SERVICES` list and re-run it (idempotent for the other 9),
-  add the same additive `prod`-profile Vault block to its `application.yml`.
+  copy the same `spring.cloud.vault` block (see step 8 above) into its `application.yml`.
 - **Scaling to 3-node HA**: bump `vault-statefulset.yaml`'s `replicas` to 3 and add
   `retry_join` stanzas per peer in the `storage "raft"` block (see HashiCorp's Raft
   reference architecture docs) — or adopt the official `hashicorp/vault` Helm chart at

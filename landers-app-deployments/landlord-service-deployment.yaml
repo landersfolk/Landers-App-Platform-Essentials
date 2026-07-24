@@ -1,27 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gateway-service
+  name: landlord-service
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: gateway-service
+      app: landlord-service
   template:
     metadata:
       labels:
-        app: gateway-service
+        app: landlord-service
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "7070"
+        prometheus.io/port: "7073"
         prometheus.io/path: "/actuator/prometheus"
     spec:
       containers:
-      - name: gateway-service
-        image: localhost:5000/gateway-service:qa
+      - name: landlord-service
+        image: localhost:5000/landlord-service:qa
         imagePullPolicy: Always
         ports:
-        - containerPort: 7070
+        - containerPort: 7073
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "qa"
@@ -36,24 +36,25 @@ spec:
         - name: VAULT_ROLE_ID
           valueFrom:
             secretKeyRef:
-              name: gateway-service-vault-creds
+              name: landlord-service-vault-creds
               key: role_id
         - name: VAULT_SECRET_ID
           valueFrom:
             secretKeyRef:
-              name: gateway-service-vault-creds
+              name: landlord-service-vault-creds
               key: secret_id
 ---
-# type: LoadBalancer - this is the one service that must be reachable from the ALB
-# (Part 11.1). k3s's ServiceLB binds host port 7070 directly.
+# Service MUST be named exactly "landlord-service" (not "land-lord-service", which the
+# old deployment template used) - gateway-service-configmap.yaml's qa route is
+# lb://landlord-service, and Spring Cloud Kubernetes discovery resolves that against
+# the Service's literal metadata.name.
 apiVersion: v1
 kind: Service
 metadata:
-  name: gateway-service
+  name: landlord-service
 spec:
-  type: LoadBalancer
   selector:
-    app: gateway-service
+    app: landlord-service
   ports:
-    - port: 7070
-      targetPort: 7070
+    - port: 7073
+      targetPort: 7073
