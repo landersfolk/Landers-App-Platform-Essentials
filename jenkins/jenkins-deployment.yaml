@@ -43,6 +43,14 @@ spec:
               mountPath: /var/jenkins_home
             - name: docker-sock
               mountPath: /var/run/docker.sock
+            # Read-only mount of the host's already-working Artifactory settings.xml
+            # (Part 7.5) - avoids needing to upload it through Jenkins' browser file
+            # picker (which would require getting it onto whatever machine's browser
+            # is doing the upload). Pipelines reference this fixed path directly
+            # instead of a Jenkins "Secret file" credential.
+            - name: maven-settings
+              mountPath: /mnt/maven-settings.xml
+              readOnly: true
           resources:
             requests:
               memory: "1Gi"
@@ -57,6 +65,10 @@ spec:
           hostPath:
             path: /var/run/docker.sock
             type: Socket
+        - name: maven-settings
+          hostPath:
+            path: /home/ubuntu/.m2/settings.xml
+            type: File
 ---
 apiVersion: v1
 kind: Service
