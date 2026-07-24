@@ -163,7 +163,12 @@ spec:
             - name: SERVER_SERVLET_CONTEXTPATH
               value: "/"
             - name: JVM_OPTS
-              value: "-Xms64M -Xmx128M"
+              # Bumped 2026-07-24 — the original -Xmx128M/256Mi limit OOMKilled
+              # (exit 137) on every startup. Kafdrop 4.2.0 is a Spring Boot 3.x app;
+              # 128M heap isn't enough headroom for its own startup (embedded
+              # servlet container, Kafka client, actuator) even before serving
+              # any real traffic.
+              value: "-Xms128M -Xmx256M"
           readinessProbe:
             httpGet:
               path: /actuator/health
@@ -179,10 +184,13 @@ spec:
           resources:
             requests:
               cpu: "100m"
-              memory: "128Mi"
+              memory: "256Mi"
             limits:
               cpu: "500m"
-              memory: "256Mi"
+              # Bumped alongside JVM_OPTS above — container limit needs real
+              # headroom beyond -Xmx (JVM metaspace, thread stacks, direct
+              # buffers all live outside the heap).
+              memory: "512Mi"
 
 ---
 # ============================================================
