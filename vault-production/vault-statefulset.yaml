@@ -5,12 +5,19 @@
 # alongside the dev setup with zero collision, in case you want to smoke-test it in the
 # same cluster before pointing it at a real production cluster/account.
 #
-# QA deployment note (2026-07-23): this instance runs on k3s on a single EC2 host, not
-# EKS — there is no IRSA, and KMS access instead comes from the EC2 instance profile
-# (landers-ec2-s3-role + its vault-kms-unseal inline policy) via the instance metadata
+# Deployment note (first written for QA 2026-07-23, same pattern for every later
+# environment incl. prod): this instance runs on k3s on a single EC2 host, not EKS —
+# there is no IRSA, and KMS access instead comes from THAT box's own EC2 instance
+# profile (an inline vault-kms-unseal policy on its role) via the instance metadata
 # service, which any pod on the node can reach regardless of its K8s ServiceAccount. TLS
 # is disabled below (see vault.hcl's listener block) since this Vault is ClusterIP-only,
-# never reachable outside the pod network — so step 1 below is skipped for this QA setup.
+# never reachable outside the pod network — so step 1 below is skipped for every
+# environment deployed this way.
+#
+# The seal block's region/kms_key_id are placeholders (__AWS_REGION__/__KMS_KEY_ID__),
+# rendered per-environment by deploy/03-deploy-vault.sh from envs/<env>.env — do not
+# apply this file directly with kubectl, run that script instead so a fresh environment
+# (e.g. prod) doesn't silently reuse QA's KMS key.
 #
 # ── First-time bootstrap sequence ──────────────────────────────────────────────────
 # 1. (Skipped for QA — see note above) Provision a TLS cert for vault.landers.com
@@ -55,11 +62,14 @@ data:
       node_id = "vault-prod-0"
     }
 
-    # KMS key: landers-qa-vault-unseal, created 2026-07-23. Access via
-    # landers-ec2-s3-role's inline vault-kms-unseal policy (EC2 instance profile).
+    # KMS key: per-environment, filled in by deploy/03-deploy-vault.sh from
+    # envs/<env>.env's AWS_REGION/KMS_KEY_ID (see that file — QA's real values are
+    # region=eu-west-1, key landers-qa-vault-unseal, id ee8ceade-aa4b-4e1a-8290-73732dcc5851,
+    # created 2026-07-23). Access via <env-specific>-ec2-s3-role's inline
+    # vault-kms-unseal policy (EC2 instance profile) — never a static AWS access key.
     seal "awskms" {
-      region     = "eu-west-1"
-      kms_key_id = "ee8ceade-aa4b-4e1a-8290-73732dcc5851"
+      region     = "__AWS_REGION__"
+      kms_key_id = "__KMS_KEY_ID__"
     }
 
     api_addr     = "http://vault-prod:8200"

@@ -1,3 +1,6 @@
+# image tag + SPRING_PROFILES_ACTIVE are placeholders, rendered per-environment by
+# deploy/09-deploy-services.sh from envs/<env>.env (IMAGE_TAG/ENVIRONMENT). Do not
+# kubectl apply this file directly.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,13 +21,13 @@ spec:
     spec:
       containers:
       - name: notification-service
-        image: localhost:5000/notification-service:qa
+        image: localhost:5000/notification-service:__IMAGE_TAG__
         imagePullPolicy: Always
         ports:
         - containerPort: 7078
         env:
         - name: SPRING_PROFILES_ACTIVE
-          value: "qa"
+          value: "__ENVIRONMENT__"
         - name: VAULT_HOST
           value: "vault-prod"
         - name: VAULT_PORT

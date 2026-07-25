@@ -7,8 +7,10 @@ metadata:
   namespace: default
 data:
   KC_DB: "postgres"
-  # RDS endpoint set 2026-07-23 (landers-db instance, eu-west-1).
-  KC_DB_URL: "jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/keycloak"
+  # RDS endpoint: per-environment placeholder, rendered by deploy/04-setup-keycloak.sh
+  # from envs/<env>.env's RDS_ENDPOINT (QA's real value, set 2026-07-23: landers-db
+  # instance, eu-west-1 — landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com).
+  KC_DB_URL: "jdbc:postgresql://__RDS_ENDPOINT__:5432/keycloak"
   KC_DB_USERNAME: "keycloak"
   # "edge" tells Keycloak to trust the X-Forwarded-Proto/X-Forwarded-For
   # headers the ALB adds automatically, so it correctly knows requests via the admin
@@ -38,7 +40,10 @@ data:
   # issuer-uri, which is a pure string comparison against the token's iss claim (no
   # network call involved, since jwk-set-uri is explicitly configured separately —
   # that's what makes Spring Security skip OIDC auto-discovery against issuer-uri).
-  KC_HOSTNAME: "https://keycloak-qa.landersfolk.com"
+  # Per-environment placeholder, rendered by deploy/04-setup-keycloak.sh from
+  # envs/<env>.env's KEYCLOAK_SUBDOMAIN + DOMAIN_ROOT (QA's real value:
+  # https://keycloak-qa.landersfolk.com).
+  KC_HOSTNAME: "__KEYCLOAK_HOSTNAME_URL__"
   KC_HOSTNAME_STRICT: "true"
   KC_HTTP_ENABLED: "true"
 # Secret "keycloak-secret" is DELIBERATELY NOT DEFINED IN THIS FILE.

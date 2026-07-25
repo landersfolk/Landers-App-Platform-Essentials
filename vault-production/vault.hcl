@@ -38,13 +38,15 @@ storage "raft" {
   node_id = "vault-prod-0"
 }
 
-# AWS KMS auto-unseal. Key created 2026-07-23 (alias landers-qa-vault-unseal), region
-# eu-west-1. Access is granted via landers-ec2-s3-role's inline "vault-kms-unseal" policy
-# on the EC2 instance profile — NOT a static AWS access key (this pod picks up credentials
-# automatically from the instance metadata service via that role).
+# AWS KMS auto-unseal. Per-environment key (see the vault-statefulset.yaml ConfigMap,
+# which is the copy actually deployed — this standalone file is a readable reference,
+# not applied directly). QA's key: alias landers-qa-vault-unseal, region eu-west-1,
+# created 2026-07-23. Access is granted via that box's EC2 instance profile's inline
+# "vault-kms-unseal" policy — NOT a static AWS access key (this pod picks up
+# credentials automatically from the instance metadata service via that role).
 seal "awskms" {
-  region     = "eu-west-1"
-  kms_key_id = "ee8ceade-aa4b-4e1a-8290-73732dcc5851"
+  region     = "__AWS_REGION__"
+  kms_key_id = "__KMS_KEY_ID__"
 }
 
 # Internal-only — this Vault has no public DNS name (see the TLS note above), only

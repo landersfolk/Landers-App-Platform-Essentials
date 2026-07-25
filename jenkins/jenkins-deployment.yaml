@@ -28,6 +28,13 @@ spec:
           env:
             - name: JAVA_OPTS
               value: "-Xmx1536m"
+            # Read by microservicePipeline.groovy / angularAppPipeline.groovy (both
+            # in Jenkins-Shared-Library) to pick the image tag/target for THIS box's
+            # environment. Each environment gets its OWN Jenkins instance (own EC2
+            # box, own k3s cluster) — set this to "prod" in a prod deployment of
+            # this manifest; every service/frontend Jenkinsfile is unchanged either way.
+            - name: DEPLOY_ENV
+              value: "qa"
           volumeMounts:
             - name: jenkins-home
               mountPath: /var/jenkins_home
