@@ -80,7 +80,12 @@ data:
       port: 7073
     media:
       upload:
+        provider: s3
         base-path: uploads/landlord
+        s3:
+          bucket: landers-assets-dev-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
 
     # External service URLs
     services:
@@ -164,7 +169,12 @@ data:
       port: 7073
     media:
       upload:
+        provider: s3
         base-path: uploads/landlord
+        s3:
+          bucket: landers-assets-qa-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
 
     # External service URLs
     services:

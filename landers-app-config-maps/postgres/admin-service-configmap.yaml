@@ -97,7 +97,12 @@ data:
       port: 7071
     media:
       upload:
+        provider: s3
         base-path: uploads/admin
+        s3:
+          bucket: landers-assets-dev-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
 
     ---
     # QA Profile
@@ -183,7 +188,12 @@ data:
       port: 7071
     media:
       upload:
+        provider: s3
         base-path: uploads/admin
+        s3:
+          bucket: landers-assets-qa-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
 
     ---
     # PROD Profile
