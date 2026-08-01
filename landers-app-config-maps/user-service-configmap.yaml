@@ -28,6 +28,15 @@ data:
       jackson:
         serialization:
           write-dates-as-timestamps: false
+      cloud:
+        kubernetes:
+          discovery:
+            enabled: true
+        openfeign:
+          client:
+            config:
+              land-lord-service:
+                url: http://localhost:7073
       kafka:
         bootstrap-servers: localhost:9093
         group-id: user-service-group

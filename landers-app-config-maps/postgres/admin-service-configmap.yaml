@@ -52,6 +52,12 @@ data:
                 url: http://localhost:7072
               corporate-service:
                 url: http://localhost:7074
+              booking-service:
+                url: http://localhost:7076
+              payment-service:
+                url: http://localhost:7077
+              user-service:
+                url: http://localhost:7075
       # --- Kafka Configuration ---
       kafka:
         bootstrapServers: localhost:9093
