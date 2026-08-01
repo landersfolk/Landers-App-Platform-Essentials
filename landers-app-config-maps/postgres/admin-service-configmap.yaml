@@ -46,7 +46,7 @@ data:
         openfeign:
           client:
             config:
-              land-lord-service:
+              landlord-service:
                 url: http://localhost:7073
               requester-service:
                 url: http://localhost:7072
