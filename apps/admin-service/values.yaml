@@ -2,7 +2,7 @@ nameOverride: admin-service
 
 image:
   repository: ghcr.io/landersfolk/admin-service
-  tag: "435108a"
+  tag: "2b8769b"
   pullPolicy: Always
 
 containerPort: 7071
