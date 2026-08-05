@@ -1,13 +1,60 @@
 # Jenkins/JFrog → GitHub Actions/ArgoCD migration (2026-08-05)
 
-**Status: COMPLETE and fully verified.** `main` is merged and pushed in all
-15 repos. ArgoCD's `argocd/root-app.yaml` is applied on the `k3d-landers-app`
-cluster, the old JFrog Artifactory pod/svc/pvc is deleted. **All 9 backend
-services + both frontends are confirmed `Healthy`/`Running`** in the cluster
-— every single ArgoCD Application shows `Synced`/`Healthy`, every pod is
-`1/1 Running`. `quality` (the live EC2 QA branch) was deliberately never
-touched by any of this — every fix below only reads from it, never
-pushes/merges into it.
+**Status: COMPLETE on BOTH clusters.** `main` (dev, k3d-landers-app) and
+`quality` (QA, the real EC2 box `i-0285595f45e8d9f7d`, private subnet, cluster
+name `landers-qa`) are both fully live — all 9 backend services + both
+frontends confirmed `1/1 Running` on each. `quality` was merged from `main`
+only after the user explicitly asked for it (see "QA EC2 rollout" below);
+before that, every fix only ever read from `quality`, never pushed to it.
+
+## QA EC2 rollout (same day, after dev cluster verified)
+
+Once the k3d/dev cluster was fully working, the user asked to do the same on
+the real QA EC2 server, which pulls from `quality` — plus "consider using
+Vault like production" (real AppRole, not the dev cluster's shared TOKEN).
+
+**What's different about this cluster vs k3d, and why:**
+- **Vault**: `quality`'s Vault (`vault-prod-0`, real HA/raft/awskms-auto-unseal
+  StatefulSet) already had AppRole fully bootstrapped — real
+  `<service>-vault-creds` k8s Secrets already existed (12+ days old, from
+  `vault-production/setup-approle.sh`). `apps/<service>/values.yaml` on
+  `quality` uses `authMethod: APPROLE` + `host: vault-prod` (not
+  `vault-server`/`TOKEN` like the dev cluster).
+- **This cluster was already live** — 9 services + 2 frontends already
+  running via the OLD Jenkins pipeline (`localhost:5000` images), serving
+  real QA traffic, when ArgoCD was installed. **Automated sync was
+  deliberately left OFF** for every per-service Application (manual sync
+  only) — each one was reviewed with `argocd app diff` before syncing, to
+  avoid ArgoCD silently overwriting a live pod with something wrong on first
+  contact. This caught two real bugs before they ever touched a live pod:
+  1. `service.type` had no default (silently ClusterIP) — would have flipped
+     `gateway-service`'s externally-routed `LoadBalancer` Service. Fixed by
+     adding `service.type` to the chart + overriding it to `LoadBalancer` for
+     `gateway-service`/`admin-dashboard`/`lander-web` specifically (confirmed
+     via `kubectl get svc` which services actually need it).
+  2. `admin-dashboard`/`lander-web`'s `service.port` was `80`, but their real
+     Services use port `4400`/`4300` (`ADMIN_DASHBOARD_PORT`/`WEBSITE_PORT`
+     from `deploy/envs/qa.env`) with `targetPort: 80` — a straight `port: 80`
+     would have replaced the whole `ports:` array on sync (kubectl apply
+     doesn't merge Service port lists), silently changing the NodePort and
+     breaking whatever the ALB target group points at. Fixed by setting
+     `service.port` to the correct 4400/4300 per service, `containerPort`
+     unchanged at 80.
+- After both fixes, every diff showed only the expected image swap +
+  `imagePullSecrets` addition — synced all 11 one by one, all came up
+  `1/1 Running`, and all 3 `LoadBalancer` Services kept their exact same
+  external IP/port/NodePort (zero ALB disruption).
+- **Jenkins and Artifactory are still running on this box, untouched** —
+  user's explicit call to leave them alone until the new pipeline's been
+  proven out further. Don't remove them without asking again.
+- Each service's `.github/workflows/ci.yml` now triggers on push to `quality`
+  too (not just `main`), and the `update-gitops` job checks out
+  Platform-Essentials at `ref: github.ref_name` so a `quality` push bumps
+  `quality`'s values.yaml, a `main` push bumps `main`'s — same repo, same
+  file path, correct branch picked automatically.
+- `argocd/applications/*.yaml` + `root-app.yaml` on the `quality` branch have
+  `targetRevision: quality` (vs `main` on the dev branch) — each branch's
+  ArgoCD instance watches its own revision.
 
 ## Resolved: admin-service, landlord-service, corporate-service, Admin-Dashboard-Front-End
 
