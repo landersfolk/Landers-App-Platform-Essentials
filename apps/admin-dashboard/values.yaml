@@ -9,7 +9,10 @@ containerPort: 80
 
 service:
   type: LoadBalancer
-  port: 80
+  # Must stay 4400 (not 80) -- matches ADMIN_DASHBOARD_PORT in
+  # deploy/envs/qa.env, which the ALB target group + host-port routing
+  # depend on. containerPort (nginx's actual listen port) stays 80.
+  port: 4400
 
 env: {}
 
