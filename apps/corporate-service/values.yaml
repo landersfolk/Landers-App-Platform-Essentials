@@ -2,7 +2,7 @@ nameOverride: corporate-service
 
 image:
   repository: ghcr.io/landersfolk/corporate-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in corporate-service
+  tag: "164a1fd"
   pullPolicy: Always
 
 containerPort: 7074

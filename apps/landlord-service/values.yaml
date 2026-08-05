@@ -2,7 +2,7 @@ nameOverride: landlord-service
 
 image:
   repository: ghcr.io/landersfolk/landlord-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in landlord-service
+  tag: "ea480ec"
   pullPolicy: Always
 
 containerPort: 7073

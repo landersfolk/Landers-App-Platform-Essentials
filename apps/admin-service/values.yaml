@@ -2,7 +2,7 @@ nameOverride: admin-service
 
 image:
   repository: ghcr.io/landersfolk/admin-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in admin-service
+  tag: "435108a"
   pullPolicy: Always
 
 containerPort: 7071
