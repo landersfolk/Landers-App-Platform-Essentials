@@ -1,9 +1,46 @@
 # Jenkins/JFrog → GitHub Actions/ArgoCD migration (2026-08-05)
 
-Everything below is on the `development` branch of each of the 15
-`landersfolk` repos (one exception noted below). Nothing is live yet — this
-only goes live once you merge `development` → `main` per repo (the new
-workflows all trigger on `push: main`).
+**Status: LIVE.** `main` has been merged and pushed in 12 of 15 repos, ArgoCD's
+`argocd/root-app.yaml` is applied on the `k3d-landers-app` cluster, and the old
+JFrog Artifactory pod/svc/pvc is deleted. `quality` (the live EC2 QA branch)
+was deliberately never touched by any of this.
+
+## Known issues on `main` right now
+
+- **admin-service, landlord-service, corporate-service**: still on the OLD
+  JFrog pom.xml/no-workflow state. Their `development` branches have the full
+  CI/CD migration + the id-collision fix below, but merging `development` →
+  `main` hits real **application-code merge conflicts** (e.g.
+  `AdminCorporateService.java`, `AdminDashboardService.java`,
+  `AdminRequesterService.java`) — `main` (via an earlier accidental
+  `quality`→`main` merge on these 3 repos only) and `development` have
+  independently diverged real feature work, not just CI/CD scaffolding. This
+  needs a human to reconcile which version of each conflicting file is
+  correct — do not auto-merge. Until that's done, these 3 repos have no CI
+  workflow running on `main` at all (so no failures, but also no GitHub
+  Packages/ghcr.io pipeline).
+- **Landers-Web-Site**: `main` is branch-protected (PR required). The
+  reconciled commit (merges a real pre-existing local/remote divergence +
+  adds the CI workflow) is pushed to branch `ci-cd-migration-to-main` —
+  open/merge that PR when ready.
+- **user-service**: GitHub's default branch is still `feature/user-service-auth`
+  (a `main` branch didn't exist before this migration — created it fresh from
+  `development`). Cosmetic only; doesn't block the CI trigger. Fix in repo
+  settings when convenient.
+
+## Post-launch fix: Maven repository id collision (2026-08-05, same day)
+
+First real CI run failed everywhere with `'repositories.repository.id' must
+be unique: github`. The original design gave both GitHub Packages
+`<repository>` entries (commons-module, data-module) the same id `github`,
+assuming Maven only matches credentials by id — true for `settings.xml`
+servers, but Maven separately rejects duplicate repository ids within one
+pom.xml outright. Fixed by splitting into `github-commons-module` /
+`github-data-module`, both still authenticated by the same `PACKAGES_PAT` via
+two `<server>` entries. Also stopped relying on `actions/setup-java`'s
+single-server templating (it can only emit one `<server>`) — settings.xml is
+now written directly in a workflow step. If you're reading pom.xml/workflow
+examples below, they already reflect this fix.
 
 ## What changed
 
