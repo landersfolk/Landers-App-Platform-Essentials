@@ -1,0 +1,62 @@
+# image tag + SPRING_PROFILES_ACTIVE are placeholders, rendered per-environment by
+# deploy/09-deploy-services.sh from envs/<env>.env (IMAGE_TAG/ENVIRONMENT). Do not
+# kubectl apply this file directly.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway-service
+  template:
+    metadata:
+      labels:
+        app: gateway-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7070"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      containers:
+      - name: gateway-service
+        image: localhost:5000/gateway-service:__IMAGE_TAG__
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 7070
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "__ENVIRONMENT__"
+        - name: VAULT_HOST
+          value: "vault-prod"
+        - name: VAULT_PORT
+          value: "8200"
+        - name: VAULT_SCHEME
+          value: "http"
+        - name: VAULT_AUTH_METHOD
+          value: "APPROLE"
+        - name: VAULT_ROLE_ID
+          valueFrom:
+            secretKeyRef:
+              name: gateway-service-vault-creds
+              key: role_id
+        - name: VAULT_SECRET_ID
+          valueFrom:
+            secretKeyRef:
+              name: gateway-service-vault-creds
+              key: secret_id
+---
+# type: LoadBalancer - this is the one service that must be reachable from the ALB
+# (Part 11.1). k3s's ServiceLB binds host port 7070 directly.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: gateway-service
+  ports:
+    - port: 7070
+      targetPort: 7070

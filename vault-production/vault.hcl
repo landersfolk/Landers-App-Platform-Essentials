@@ -1,0 +1,63 @@
+# Vault PRODUCTION server configuration.
+#
+# This is a separate, independent config from the local k3d dev Vault used by
+# dev-setup-fixed.sh / vault-seed-secrets.sh / vault-config.hcl (dev mode: in-memory
+# storage, no TLS, hardcoded "root" token — fine for local dev, never for production).
+# Nothing here touches or replaces that dev setup.
+#
+# Real persistent storage (Raft integrated storage, replicated across pods/nodes instead
+# of the dev server's in-memory store that's wiped on every restart), TLS termination at
+# Vault itself (HashiCorp's own recommendation — don't terminate TLS at a proxy in front
+# of Vault), and AWS KMS auto-unseal (no manual `vault operator unseal` with Shamir key
+# shares after every restart/reschedule — the KMS key unseals it automatically on boot).
+#
+# Deploy via vault-statefulset.yaml (Kubernetes) — see that file's header comment for the
+# full first-time bootstrap sequence (init, AppRole setup, secret migration).
+
+ui = true
+
+# TLS deliberately disabled for the QA deployment: this Vault is never reachable
+# outside the k3s pod network (no LoadBalancer Service, no ALB route to it — only
+# other pods in this cluster talk to it over plain HTTP on the ClusterIP Service).
+# Re-enable tls_cert_file/tls_key_file (see git history / vault-production/README.md)
+# if this pattern is ever promoted to a real internet-facing production Vault.
+listener "tcp" {
+  address     = "0.0.0.0:8200"
+  tls_disable = true
+}
+
+# Raft integrated storage — replicated across however many pods this StatefulSet runs
+# (start at 1 replica to get real persistence immediately; bump to 3 for HA/quorum once
+# you're ready — see the README for the retry_join pattern needed at 3 replicas).
+storage "raft" {
+  path    = "/vault/data"
+  # Hardcoded, not templated: Vault's HCL parser does not do shell-style ${VAR}
+  # substitution, and this StatefulSet runs at replicas: 1, so the pod name is always
+  # deterministically vault-prod-0 anyway. Revisit if this is ever scaled to replicas: 3
+  # (would need each pod's own node_id — see the README's HA note).
+  node_id = "vault-prod-0"
+}
+
+# AWS KMS auto-unseal. Per-environment key (see the vault-statefulset.yaml ConfigMap,
+# which is the copy actually deployed — this standalone file is a readable reference,
+# not applied directly). QA's key: alias landers-qa-vault-unseal, region eu-west-1,
+# created 2026-07-23. Access is granted via that box's EC2 instance profile's inline
+# "vault-kms-unseal" policy — NOT a static AWS access key (this pod picks up
+# credentials automatically from the instance metadata service via that role).
+seal "awskms" {
+  region     = "__AWS_REGION__"
+  kms_key_id = "__KMS_KEY_ID__"
+}
+
+# Internal-only — this Vault has no public DNS name (see the TLS note above), only
+# in-cluster pods reach it, via the vault-prod ClusterIP Service.
+api_addr     = "http://vault-prod:8200"
+cluster_addr = "http://vault-prod-0.vault-prod-internal:8201"
+
+# Keep memory locked (no swap) so secret material never touches disk swap space.
+# Requires IPC_LOCK capability on the container, same as the existing dev Deployment already has.
+disable_mlock = false
+
+# Vault logs audit-relevant request metadata (not secret values) to stdout by default from
+# the `file` audit device below — enabled post-init via `vault audit enable file
+# file_path=/vault/logs/audit.log` (see README); not configurable from this server stanza.

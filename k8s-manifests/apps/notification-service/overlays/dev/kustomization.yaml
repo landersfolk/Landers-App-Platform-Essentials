@@ -1,0 +1,18 @@
+# dev overlay — this is the pilot ArgoCD Application's source path for now.
+# Uses the base as-is (already sized for dev, SPRING_PROFILES_ACTIVE=dev), so the
+# only thing this overlay adds is the `images:` block below.
+#
+# Why the images block exists: ArgoCD Image Updater's "kustomize" write-back method
+# rewrites the tag by editing THIS file's `images:` entry in place (equivalent of
+# `kustomize edit set image ...`) — it needs an entry here to have something to
+# rewrite. Nobody edits IMAGE_TAG_PLACEHOLDER by hand; Image Updater replaces it
+# automatically once a new image lands in the registry, and commits the change.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: jfrog-artifactory:8082/docker-local/notification-service
+    newTag: IMAGE_TAG_PLACEHOLDER

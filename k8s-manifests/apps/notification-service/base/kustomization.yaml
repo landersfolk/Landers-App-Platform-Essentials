@@ -1,0 +1,7 @@
+# Lists the raw resources that make up the base — every overlay builds on top of
+# this by referencing ../../base.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml

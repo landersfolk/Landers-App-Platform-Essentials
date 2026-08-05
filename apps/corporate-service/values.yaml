@@ -1,0 +1,26 @@
+nameOverride: corporate-service
+
+image:
+  repository: ghcr.io/landersfolk/corporate-service
+  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in corporate-service
+  pullPolicy: Always
+
+containerPort: 7074
+
+service:
+  port: 7074
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+vault:
+  enabled: true
+  host: vault-prod
+  port: "8200"
+  scheme: http
+  authMethod: APPROLE
+  secretName: corporate-service-vault-creds
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus

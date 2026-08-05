@@ -1,0 +1,201 @@
+# Vault PRODUCTION Kubernetes manifests — StatefulSet + Services + ConfigMap.
+#
+# Deliberately named "vault-prod-*" throughout (never "vault"/"vault-server", which are
+# the existing local dev Vault's Deployment/Service names) so this can be applied
+# alongside the dev setup with zero collision, in case you want to smoke-test it in the
+# same cluster before pointing it at a real production cluster/account.
+#
+# Deployment note (first written for QA 2026-07-23, same pattern for every later
+# environment incl. prod): this instance runs on k3s on a single EC2 host, not EKS —
+# there is no IRSA, and KMS access instead comes from THAT box's own EC2 instance
+# profile (an inline vault-kms-unseal policy on its role) via the instance metadata
+# service, which any pod on the node can reach regardless of its K8s ServiceAccount. TLS
+# is disabled below (see vault.hcl's listener block) since this Vault is ClusterIP-only,
+# never reachable outside the pod network — so step 1 below is skipped for every
+# environment deployed this way.
+#
+# The seal block's region/kms_key_id are placeholders (__AWS_REGION__/__KMS_KEY_ID__),
+# rendered per-environment by deploy/03-deploy-vault.sh from envs/<env>.env — do not
+# apply this file directly with kubectl, run that script instead so a fresh environment
+# (e.g. prod) doesn't silently reuse QA's KMS key.
+#
+# ── First-time bootstrap sequence ──────────────────────────────────────────────────
+# 1. (Skipped for QA — see note above) Provision a TLS cert for vault.landers.com
+#    (cert-manager Certificate resource, or any cert you already have) into a Secret
+#    named `vault-prod-tls` in this namespace, with keys `tls.crt` / `tls.key`.
+# 2. Create the AWS KMS key referenced in vault.hcl, and grant access to it (EC2 instance
+#    profile for a plain EC2/k3s node, as here; IRSA if this is ever run on EKS instead).
+# 3. kubectl apply -f vault-statefulset.yaml
+# 4. Exec into the pod and run `vault operator init` EXACTLY ONCE
+#    (`kubectl exec -it vault-prod-0 -- vault operator init -recovery-shares=5 -recovery-threshold=3`
+#    — NOT -key-shares/-key-threshold, those are Shamir-only flags and fail against awskms).
+#    This prints 5 recovery key shares + the initial root token — with awskms auto-unseal
+#    there's no Shamir unseal step on restart, but you still get recovery keys (needed only
+#    for disaster recovery / re-keying) and the root token (needed only to bootstrap
+#    policies/AppRole below, then should be revoked — see README.md).
+# 5. Run setup-approle.sh (this directory) using that root token to create per-service
+#    policies + AppRole roles, replacing the dev setup's shared "root" token entirely.
+# 6. Seed real secrets per environment/service (see README.md — NOT vault-seed-secrets.sh,
+#    that script's dummy dev values are not appropriate for production).
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-prod-config
+  namespace: default
+data:
+  vault.hcl: |
+    ui = true
+
+    # TLS disabled — this Vault is ClusterIP-only, never reachable outside the pod
+    # network. Re-enable tls_cert_file/tls_key_file if ever exposed beyond the cluster.
+    listener "tcp" {
+      address     = "0.0.0.0:8200"
+      tls_disable = true
+    }
+
+    storage "raft" {
+      path    = "/vault/data"
+      # Hardcoded, not templated: Vault's HCL parser does not do shell-style ${VAR}
+      # substitution, and this StatefulSet runs at replicas: 1, so the pod name is
+      # always deterministically vault-prod-0. Revisit if scaled to replicas: 3.
+      node_id = "vault-prod-0"
+    }
+
+    # KMS key: per-environment, filled in by deploy/03-deploy-vault.sh from
+    # envs/<env>.env's AWS_REGION/KMS_KEY_ID (see that file — QA's real values are
+    # region=eu-west-1, key landers-qa-vault-unseal, id ee8ceade-aa4b-4e1a-8290-73732dcc5851,
+    # created 2026-07-23). Access via <env-specific>-ec2-s3-role's inline
+    # vault-kms-unseal policy (EC2 instance profile) — never a static AWS access key.
+    seal "awskms" {
+      region     = "__AWS_REGION__"
+      kms_key_id = "__KMS_KEY_ID__"
+    }
+
+    api_addr     = "http://vault-prod:8200"
+    cluster_addr = "http://vault-prod-0.vault-prod-internal:8201"
+
+    disable_mlock = false
+
+---
+# Headless service for Raft cluster peer communication (only matters once replicas > 1).
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-prod-internal
+  namespace: default
+  labels:
+    app: vault-prod
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: vault-prod
+  ports:
+    - name: http
+      port: 8200
+    - name: cluster
+      port: 8201
+
+---
+# Client-facing service — what every microservice's VAULT_HOST/VAULT_ADDR points to.
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-prod
+  namespace: default
+  labels:
+    app: vault-prod
+spec:
+  type: ClusterIP
+  selector:
+    app: vault-prod
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vault-prod
+  namespace: default
+spec:
+  serviceName: vault-prod-internal
+  # Start at 1 to get real Raft persistence immediately with the least operational
+  # complexity. Bump to 3 (odd number, for quorum) once ready for HA — Raft's retry_join
+  # will need each pod to list its peers; the official HashiCorp Helm chart handles this
+  # automatically if you'd rather adopt that instead of hand-rolling it further here.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault-prod
+  template:
+    metadata:
+      labels:
+        app: vault-prod
+    spec:
+      # No serviceAccountName override — KMS access comes from the EC2 instance
+      # profile (landers-ec2-s3-role), not a K8s-ServiceAccount-bound identity like
+      # IRSA (that's an EKS-specific mechanism; this is plain k3s on one EC2 host).
+      # The default ServiceAccount in this namespace is fine as-is.
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.18
+          command: ["vault"]
+          args: ["server", "-config=/vault/config/vault.hcl"]
+          ports:
+            - containerPort: 8200
+              name: http
+            - containerPort: 8201
+              name: cluster
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"]
+          env:
+            - name: VAULT_ADDR
+              value: "http://127.0.0.1:8200"
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: config
+              mountPath: /vault/config
+            - name: data
+              mountPath: /vault/data
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true
+              port: 8200
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true&uninitcode=200
+              port: 8200
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+      volumes:
+        - name: config
+          configMap:
+            name: vault-prod-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+        # storageClassName: gp3   # uncomment and set to your cluster's SSD storage class

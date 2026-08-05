@@ -1,0 +1,59 @@
+# image tag + SPRING_PROFILES_ACTIVE are placeholders, rendered per-environment by
+# deploy/09-deploy-services.sh from envs/<env>.env (IMAGE_TAG/ENVIRONMENT). Do not
+# kubectl apply this file directly.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: requester-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: requester-service
+  template:
+    metadata:
+      labels:
+        app: requester-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7072"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      containers:
+      - name: requester-service
+        image: localhost:5000/requester-service:__IMAGE_TAG__
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 7072
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "__ENVIRONMENT__"
+        - name: VAULT_HOST
+          value: "vault-prod"
+        - name: VAULT_PORT
+          value: "8200"
+        - name: VAULT_SCHEME
+          value: "http"
+        - name: VAULT_AUTH_METHOD
+          value: "APPROLE"
+        - name: VAULT_ROLE_ID
+          valueFrom:
+            secretKeyRef:
+              name: requester-service-vault-creds
+              key: role_id
+        - name: VAULT_SECRET_ID
+          valueFrom:
+            secretKeyRef:
+              name: requester-service-vault-creds
+              key: secret_id
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: requester-service
+spec:
+  selector:
+    app: requester-service
+  ports:
+    - port: 7072
+      targetPort: 7072

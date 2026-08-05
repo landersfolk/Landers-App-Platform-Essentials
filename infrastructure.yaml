@@ -1,0 +1,51 @@
+# Trimmed 2026-07-24. This file used to also contain dev-mode Vault, MySQL, Postgres,
+# Kafka/Kafdrop, Keycloak, and Redis sections — all of those now have their own
+# dedicated, correct, git-tracked manifests elsewhere (vault-production/, RDS directly,
+# landers-app-deployments/kafka-and-kafdrop.yaml, landers-app-deployments/
+# keycloack-deployment.yaml, landers-app-deployments/redis-qa.yaml). Keeping duplicate
+# definitions here was actively dangerous, not just redundant: this file's old Keycloak
+# and Redis sections shared the EXACT SAME resource names (keycloak-config,
+# keycloak-secret, keycloak Deployment/Service, redis Deployment, redis-db Service) as
+# the correct ones — re-applying this file for its actually-still-needed Artifactory
+# section silently clobbered the real Keycloak/Redis config back to old dev-mode
+# defaults (discovered for real 2026-07-24, mid-QA-setup, requiring a live-cluster
+# recovery). This file now contains ONLY the RBAC block — Artifactory was removed
+# 2026-08-05 as part of the Jenkins/JFrog -> GitHub Actions/ArgoCD/GHCR/GitHub
+# Packages migration (see MIGRATION_GUIDE.md). The in-cluster artifactory
+# Deployment/Service/PVC are no longer applied by anything; if they're still
+# running on a live cluster from before this migration, delete them by hand
+# (kubectl delete deployment/artifactory svc/jfrog-artifactory pvc/artifactory-data)
+# — see MIGRATION_GUIDE.md's "Kubernetes cleanup" section.
+# ========================================================
+# 1. RBAC CONFIGURATION
+# Allows Spring Boot to read its own configuration from K8s
+# ========================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: config-reader
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: config-reader-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: default
+roleRef:
+  kind: Role
+  name: config-reader
+  apiGroup: rbac.authorization.k8s.io

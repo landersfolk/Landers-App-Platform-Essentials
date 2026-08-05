@@ -1,0 +1,26 @@
+nameOverride: requester-service
+
+image:
+  repository: ghcr.io/landersfolk/requester-service
+  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in requester-service
+  pullPolicy: Always
+
+containerPort: 7072
+
+service:
+  port: 7072
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+vault:
+  enabled: true
+  host: vault-prod
+  port: "8200"
+  scheme: http
+  authMethod: APPROLE
+  secretName: requester-service-vault-creds
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus

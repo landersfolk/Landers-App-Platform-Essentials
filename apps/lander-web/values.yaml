@@ -1,0 +1,19 @@
+nameOverride: lander-web
+
+image:
+  repository: ghcr.io/landersfolk/lander-web
+  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in Landers-Web-Site
+  pullPolicy: Always
+
+containerPort: 80
+
+service:
+  port: 80
+
+env: {}
+
+vault:
+  enabled: false
+
+prometheus:
+  enabled: false

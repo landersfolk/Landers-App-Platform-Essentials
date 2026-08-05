@@ -1,0 +1,287 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: requester-service-config
+  namespace: default
+data:
+  application.yaml: |-
+    ---
+    # DEV Profile
+    spring:
+      config:
+        activate:
+          on-profile: dev
+      datasource:
+        url: jdbc:postgresql://localhost:5432/landers-app-lander-db
+        driver-class-name: org.postgresql.Driver
+        hikari:
+          maximum-pool-size: 5
+      data:
+        redis:
+          host: localhost
+          port: 6379
+      cache:
+        type: redis
+      flyway:
+        enabled: true
+        locations: classpath:db/migration
+        lock-retry-count: 10
+        url: jdbc:postgresql://localhost:5432/landers-app-lander-db
+      jpa:
+        hibernate:
+          ddl-auto: none
+        show-sql: true
+        properties:
+          hibernate:
+            format_sql: true
+            dialect: org.hibernate.dialect.PostgreSQLDialect
+            globally_quoted_identifiers: true
+      jackson:
+        serialization:
+          write-dates-as-timestamps: false
+      # --- Kafka Configuration ---
+      kafka:
+        bootstrap-servers: localhost:9093
+        group-id: requester-service-group
+        topics:
+          userRegistrationLandlord: user-registration-landlord
+          userRegistrationRequester: user-registration-requester
+          userRegistrationAdmin: user-registration-admin
+          userRegistrationLandlordDlt: user-registration-landlord-dlt
+          userRegistrationRequesterDlt: user-registration-requester-dlt
+          userRegistrationAdminDlt: user-registration-admin-dlt
+        producer:
+          acks: all
+          retries: 3
+          deliveryTimeoutMs: 30000
+          requestTimeoutMs: 20000
+        consumer:
+          auto-offset-reset: earliest
+          enable-auto-commit: false
+          trustedPackages: io.landers.commons.cloud.events
+          defaultValueType: io.landers.commons.cloud.events.UserRegisterEvent
+      # --- Security Configuration ---
+      security:
+        oauth2:
+          resourceserver:
+            jwt:
+              issuer-uri: http://localhost:8180/realms/landers-realm
+              jwk-set-uri: http://localhost:8180/realms/landers-realm/protocol/openid-connect/certs
+
+    keycloak:
+      auth-server-url: http://localhost:8180
+      tokenUrl: http://localhost:8180/realms/landers-realm/protocol/openid-connect/token
+      grantType: password
+      realm: landers-realm
+
+    jwt:
+      auth:
+        converter:
+          resource-id: landers-app
+          principle-attribute: preferred_username
+
+    server:
+      port: 7072
+    media:
+      upload:
+        provider: s3
+        base-path: uploads/requester
+        s3:
+          bucket: landers-assets-dev-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
+
+    # External service URLs
+    services:
+      admin-service:
+        url: http://localhost:7071
+
+    ---
+    # QA Profile
+    spring:
+      config:
+        activate:
+          on-profile: qa
+      datasource:
+        url: jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/landers-app-lander-db?sslmode=require
+        driver-class-name: org.postgresql.Driver
+        hikari:
+          maximum-pool-size: 10
+          connection-timeout: 30000
+      data:
+        redis:
+          host: redis-db
+          port: 6379
+      cache:
+        type: redis
+      flyway:
+        enabled: true
+        locations: classpath:db/migration
+        lock-retry-count: 10
+        url: jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/landers-app-lander-db?sslmode=require
+      jpa:
+        hibernate:
+          ddl-auto: none
+        show-sql: false
+        properties:
+          hibernate:
+            dialect: org.hibernate.dialect.PostgreSQLDialect
+            globally_quoted_identifiers: true
+      jackson:
+        serialization:
+          write-dates-as-timestamps: false
+      cloud:
+        kubernetes:
+          discovery:
+            enabled: true
+        # NO openfeign.client.config here - uses service discovery lb://
+      # --- Kafka Configuration ---
+      kafka:
+        bootstrap-servers: kafka-broker:9092
+        group-id: requester-service-group
+        topics:
+          userRegistrationLandlord: user-registration-landlord
+          userRegistrationRequester: user-registration-requester
+          userRegistrationAdmin: user-registration-admin
+          userRegistrationLandlordDlt: user-registration-landlord-dlt
+          userRegistrationRequesterDlt: user-registration-requester-dlt
+          userRegistrationAdminDlt: user-registration-admin-dlt
+        producer:
+          acks: all
+          retries: 3
+          deliveryTimeoutMs: 30000
+          requestTimeoutMs: 20000
+        consumer:
+          auto-offset-reset: earliest
+          enable-auto-commit: false
+          trustedPackages: io.landers.commons.cloud.events
+          defaultValueType: io.landers.commons.cloud.events.UserRegisterEvent
+      # --- Security Configuration ---
+      security:
+        oauth2:
+          resourceserver:
+            jwt:
+              issuer-uri: https://keycloak-qa.landersfolk.com/realms/landers-realm
+              jwk-set-uri: https://keycloak-qa.landersfolk.com/realms/landers-realm/protocol/openid-connect/certs
+
+    keycloak:
+      auth-server-url: http://keycloak:8180
+      tokenUrl: https://keycloak-qa.landersfolk.com/realms/landers-realm/protocol/openid-connect/token
+      grantType: password
+      realm: landers-realm
+
+    jwt:
+      auth:
+        converter:
+          resource-id: landers-app
+          principle-attribute: preferred_username
+
+    server:
+      port: 7072
+    media:
+      upload:
+        provider: s3
+        base-path: uploads/requester
+        s3:
+          bucket: landers-assets-qa-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
+
+    # External service URLs
+    services:
+      admin-service:
+        url: http://admin-service:7071
+
+    ---
+    # PROD Profile
+    spring:
+      config:
+        activate:
+          on-profile: prod
+      datasource:
+        url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
+        driver-class-name: org.postgresql.Driver
+        hikari:
+          maximum-pool-size: 20
+          connection-timeout: 20000
+          minimum-idle: 10
+          idle-timeout: 600000
+          max-lifetime: 1800000
+      data:
+        redis:
+          host: redis-db-prod
+          port: 6379
+      cache:
+        type: redis
+      flyway:
+        enabled: true
+        locations: classpath:db/migration
+        lock-retry-count: 10
+        url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
+      jpa:
+        hibernate:
+          ddl-auto: none
+        show-sql: false
+        properties:
+          hibernate:
+            dialect: org.hibernate.dialect.PostgreSQLDialect
+            globally_quoted_identifiers: true
+      jackson:
+        serialization:
+          write-dates-as-timestamps: false
+      cloud:
+        kubernetes:
+          discovery:
+            enabled: true
+        # NO openfeign.client.config here - uses service discovery lb://
+      # --- Kafka Configuration ---
+      kafka:
+        bootstrap-servers: kafka-broker:9092
+        group-id: requester-service-group
+        topics:
+          userRegistrationLandlord: user-registration-landlord
+          userRegistrationRequester: user-registration-requester
+          userRegistrationAdmin: user-registration-admin
+          userRegistrationLandlordDlt: user-registration-landlord-dlt
+          userRegistrationRequesterDlt: user-registration-requester-dlt
+          userRegistrationAdminDlt: user-registration-admin-dlt
+        producer:
+          acks: all
+          retries: 5
+          deliveryTimeoutMs: 45000
+          requestTimeoutMs: 30000
+        consumer:
+          auto-offset-reset: earliest
+          enable-auto-commit: false
+          trustedPackages: io.landers.commons.cloud.events
+          defaultValueType: io.landers.commons.cloud.events.UserRegisterEvent
+      # --- Security Configuration ---
+      security:
+        oauth2:
+          resourceserver:
+            jwt:
+              issuer-uri: http://keycloak:8180/realms/landers-realm
+              jwk-set-uri: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/certs
+
+    keycloak:
+      auth-server-url: http://keycloak:8180
+      tokenUrl: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/token
+      grantType: password
+      realm: landers-realm
+
+    jwt:
+      auth:
+        converter:
+          resource-id: landers-app
+          principle-attribute: preferred_username
+
+    server:
+      port: 7072
+    media:
+      upload:
+        base-path: uploads/requester
+
+    # External service URLs
+    services:
+      admin-service:
+        url: http://admin-service:7071

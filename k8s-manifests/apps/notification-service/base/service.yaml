@@ -1,0 +1,14 @@
+# ClusterIP Service for notification-service — same shape as the existing
+# Landers-App-Platform-Essentials/landers-app-deployments/notification-service-deployment.yaml
+# Service block. Not a LoadBalancer (this service isn't reached from outside the
+# cluster), so no external-access changes needed for this migration.
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - port: 7078
+      targetPort: 7078

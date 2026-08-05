@@ -1,0 +1,63 @@
+# image tag + SPRING_PROFILES_ACTIVE are placeholders, rendered per-environment by
+# deploy/09-deploy-services.sh from envs/<env>.env (IMAGE_TAG/ENVIRONMENT). Do not
+# kubectl apply this file directly.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: landlord-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: landlord-service
+  template:
+    metadata:
+      labels:
+        app: landlord-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7073"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      containers:
+      - name: landlord-service
+        image: localhost:5000/landlord-service:__IMAGE_TAG__
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 7073
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "__ENVIRONMENT__"
+        - name: VAULT_HOST
+          value: "vault-prod"
+        - name: VAULT_PORT
+          value: "8200"
+        - name: VAULT_SCHEME
+          value: "http"
+        - name: VAULT_AUTH_METHOD
+          value: "APPROLE"
+        - name: VAULT_ROLE_ID
+          valueFrom:
+            secretKeyRef:
+              name: landlord-service-vault-creds
+              key: role_id
+        - name: VAULT_SECRET_ID
+          valueFrom:
+            secretKeyRef:
+              name: landlord-service-vault-creds
+              key: secret_id
+---
+# Service MUST be named exactly "landlord-service" (not "land-lord-service", which the
+# old deployment template used) - gateway-service-configmap.yaml's qa route is
+# lb://landlord-service, and Spring Cloud Kubernetes discovery resolves that against
+# the Service's literal metadata.name.
+apiVersion: v1
+kind: Service
+metadata:
+  name: landlord-service
+spec:
+  selector:
+    app: landlord-service
+  ports:
+    - port: 7073
+      targetPort: 7073

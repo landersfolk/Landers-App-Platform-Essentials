@@ -1,0 +1,42 @@
+# Defaults — every field here is overridden per-service in apps/<service>/values.yaml.
+nameOverride: ""
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/landersfolk/CHANGEME
+  tag: "latest"
+  pullPolicy: Always
+
+containerPort: 8080
+
+service:
+  port: 8080
+
+# Plain string env vars merged onto the container (SPRING_PROFILES_ACTIVE, etc).
+env: {}
+
+# Env vars sourced from an existing Secret (created outside this chart — see
+# deploy/09-deploy-services.sh's Vault AppRole secret bootstrap). Set
+# vault.enabled: false for frontends, which don't talk to Vault directly.
+vault:
+  enabled: false
+  host: vault-prod
+  port: "8200"
+  scheme: http
+  authMethod: APPROLE
+  secretName: ""
+
+# Prometheus scrape annotations — backend services only (Spring Actuator).
+prometheus:
+  enabled: false
+  path: /actuator/prometheus
+
+resources: {}
+
+# Set true to add a basic CPU-based HPA. Off by default — keep it simple until needed.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80

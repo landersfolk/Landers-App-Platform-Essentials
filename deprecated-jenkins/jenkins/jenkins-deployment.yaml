@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # avoid two pods briefly both writing the hostPath dir mid-rollout
+  selector:
+    matchLabels:
+      app: jenkins
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      serviceAccountName: jenkins
+      # Runs as root deliberately - see Dockerfile's comment. Needed for the
+      # docker.sock bind-mount below to work without host-GID-matching.
+      securityContext:
+        runAsUser: 0
+      containers:
+        - name: jenkins
+          image: localhost:5000/jenkins:qa
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: JAVA_OPTS
+              value: "-Xmx1536m"
+            # Read by microservicePipeline.groovy / angularAppPipeline.groovy (both
+            # in Jenkins-Shared-Library) to pick the image tag/target for THIS box's
+            # environment. Each environment gets its OWN Jenkins instance (own EC2
+            # box, own k3s cluster) — set this to "prod" in a prod deployment of
+            # this manifest; every service/frontend Jenkinsfile is unchanged either way.
+            - name: DEPLOY_ENV
+              value: "qa"
+          volumeMounts:
+            - name: jenkins-home
+              mountPath: /var/jenkins_home
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+            # Read-only mount of the host's already-working Artifactory settings.xml
+            # (Part 7.5) - avoids needing to upload it through Jenkins' browser file
+            # picker (which would require getting it onto whatever machine's browser
+            # is doing the upload). Pipelines reference this fixed path directly
+            # instead of a Jenkins "Secret file" credential.
+            - name: maven-settings
+              mountPath: /mnt/maven-settings.xml
+              readOnly: true
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+      volumes:
+        # hostPath at the IDENTICAL absolute path on both sides (not a PVC) -
+        # deliberate. Pipelines run `docker run -v "$PWD":/build ...` to reach the
+        # host's Docker daemon (via the socket below); that daemon resolves bind-mount
+        # paths against the HOST filesystem, not this container's. A PVC (backed by
+        # k3s's local-path-provisioner at some unrelated /var/lib/rancher/... host
+        # path) would make $PWD resolve to an empty directory on the host, silently
+        # breaking every nested docker run -v "$PWD":... in every pipeline - this bit
+        # both the Maven (settings.xml "Is a directory") and Angular (empty checkout,
+        # "npm ci" sees no package-lock.json) pipelines identically. Same identical-path
+        # trick already used for docker-sock below.
+        - name: jenkins-home
+          hostPath:
+            path: /var/jenkins_home
+            type: DirectoryOrCreate
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+        - name: maven-settings
+          hostPath:
+            path: /home/ubuntu/.m2/settings.xml
+            type: File
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins
+spec:
+  type: LoadBalancer
+  selector:
+    app: jenkins
+  ports:
+    - port: 8090
+      targetPort: 8080

@@ -1,0 +1,181 @@
+---
+# ConfigMap - Basic Keycloak Settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-config
+  namespace: default
+data:
+  KC_DB: "postgres"
+  # RDS endpoint: per-environment placeholder, rendered by deploy/04-setup-keycloak.sh
+  # from envs/<env>.env's RDS_ENDPOINT (QA's real value, set 2026-07-23: landers-db
+  # instance, eu-west-1 — landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com).
+  KC_DB_URL: "jdbc:postgresql://__RDS_ENDPOINT__:5432/keycloak"
+  KC_DB_USERNAME: "keycloak"
+  # "edge" tells Keycloak to trust the X-Forwarded-Proto/X-Forwarded-For
+  # headers the ALB adds automatically, so it correctly knows requests via the admin
+  # console arrived over HTTPS (needed for secure-cookie handling and correct URL
+  # generation in the admin console SPA — without this, the console showed a generic
+  # untranslated "somethingWentWrong" error, found 2026-07-24). This does NOT affect
+  # gateway-service's direct internal calls to http://keycloak:8180 — those requests
+  # simply have no forwarded headers to trust, so Keycloak falls back to the real
+  # (correctly plain-HTTP) connection info for that path either way.
+  KC_PROXY: "edge"
+  # PUBLIC URL (changed 2026-07-24, 3rd iteration of this setting — see the repo's
+  # memory / commit history if you want the full story of how we got here). Earlier
+  # attempts tried keeping this internal-only (http://keycloak:8180) with a separate
+  # KC_HOSTNAME_ADMIN for the console — that broke browser admin login, because
+  # KC_HOSTNAME_ADMIN only covers admin static assets/REST API, NOT the realm-level
+  # OIDC endpoints the admin console's OWN login flow depends on (e.g. the 3rd-party-
+  # cookie-detection iframe) — those always follow the base KC_HOSTNAME. Since that
+  # base hostname was cluster-internal, no browser could ever complete the admin login.
+  #
+  # This does NOT require gateway-service to reach this public URL over the network.
+  # KC_HOSTNAME only controls what URL Keycloak itself EMBEDS in tokens/pages it
+  # generates — it's unrelated to how OTHER services actually connect to it.
+  # gateway-service's own tokenUrl/jwk-set-uri config (EC2_QA_Environment_Setup_Guide.txt
+  # Part 9.3) keeps pointing at the internal http://keycloak:8180 address for its
+  # actual HTTP calls (ROPC token requests, JWKS fetch) — no hairpin through the ALB.
+  # The ONLY thing that has to match this public value is gateway-service's
+  # issuer-uri, which is a pure string comparison against the token's iss claim (no
+  # network call involved, since jwk-set-uri is explicitly configured separately —
+  # that's what makes Spring Security skip OIDC auto-discovery against issuer-uri).
+  # Per-environment placeholder, rendered by deploy/04-setup-keycloak.sh from
+  # envs/<env>.env's KEYCLOAK_SUBDOMAIN + DOMAIN_ROOT (QA's real value:
+  # https://keycloak-qa.landersfolk.com).
+  KC_HOSTNAME: "__KEYCLOAK_HOSTNAME_URL__"
+  KC_HOSTNAME_STRICT: "true"
+  KC_HTTP_ENABLED: "true"
+# Secret "keycloak-secret" is DELIBERATELY NOT DEFINED IN THIS FILE.
+#
+# It used to be here with placeholder stringData values, on the assumption that you'd
+# `kubectl apply -f` this file once, then separately inject real values over it. That
+# assumption was wrong in practice (discovered 2026-07-24, after real debugging pain):
+# every subsequent `kubectl apply -f` of THIS file — e.g. for an unrelated ConfigMap/
+# Deployment tweak — silently RESET the Secret back to the committed placeholder values,
+# repeatedly clobbering the real DB/admin password and causing Keycloak to crash-loop
+# with "password authentication failed" for no apparent reason (looked like a new bug
+# each time; it was the same one, recurring).
+#
+# So: this file only ever touches the ConfigMap/Deployment/Service. Create the Secret
+# ONCE, out-of-band, and never re-run this exact command as part of a routine
+# `kubectl apply -f` of this file — only if the DB/admin password itself actually changes:
+#   kubectl create secret generic keycloak-secret --namespace default \
+#     --from-literal=KEYCLOAK_ADMIN=admin \
+#     --from-literal=KEYCLOAK_ADMIN_PASSWORD='<real admin password>' \
+#     --from-literal=KC_DB_PASSWORD='<the keycloak RDS user password from Part 6.1>'
+# (no --dry-run=client -o yaml | kubectl apply -f - this time — plain `kubectl create`,
+# specifically so a re-run of THIS file can never touch it again)
+---
+# Deployment — no readiness/liveness probes configured yet. Fine for QA (a crashed
+# container still gets noticed via `kubectl get pods` showing CrashLoopBackOff either
+# way); add probes here if this pattern is ever promoted closer to real production.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: default
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+      - name: keycloak
+        image: quay.io/keycloak/keycloak:26.0.7
+        # "start" (production mode), not "start-dev" — start-dev disables various
+        # hardening/caching behaviors that are fine for a laptop but not for a QA box
+        # meant to behave like production. Production mode is stricter about config
+        # (e.g. requires KC_HOSTNAME to be set, which we now provide below) — if the
+        # pod fails to start after this change, check `kubectl logs` first, it's
+        # usually a missing required setting rather than a real problem.
+        args: ["start"]
+        ports:
+        - name: http
+          containerPort: 8080
+        env:
+        - name: KEYCLOAK_ADMIN
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-secret
+              key: KEYCLOAK_ADMIN
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-secret
+              key: KEYCLOAK_ADMIN_PASSWORD
+        - name: KC_DB
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_DB
+        - name: KC_DB_URL
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_DB_URL
+        - name: KC_DB_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_DB_USERNAME
+        - name: KC_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-secret
+              key: KC_DB_PASSWORD
+        - name: KC_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_PROXY
+        - name: KC_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_HOSTNAME
+        - name: KC_HOSTNAME_STRICT
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_HOSTNAME_STRICT
+        - name: KC_HTTP_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_HTTP_ENABLED
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+---
+# Service — type: LoadBalancer (changed 2026-07-24), so k3s's ServiceLB binds this to
+# a real host port (8180) for the ALB to reach (public admin console access, KC_HOSTNAME
+# above). gateway-service's internal calls are unaffected either way — it reaches this
+# same Service at http://keycloak:8180, since LoadBalancer Services in Kubernetes remain
+# fully reachable via ClusterIP too, regardless of what public routing also exists.
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: default
+  labels:
+    app: keycloak
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 8180
+    targetPort: 8080
+  selector:
+    app: keycloak
