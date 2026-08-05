@@ -1,38 +1,42 @@
 # Jenkins/JFrog → GitHub Actions/ArgoCD migration (2026-08-05)
 
-**Status: LIVE and mostly verified end-to-end.** `main` is merged and pushed
-in 12 of 15 repos, ArgoCD's `argocd/root-app.yaml` is applied on the
-`k3d-landers-app` cluster, the old JFrog Artifactory pod/svc/pvc is deleted,
-and **6 of 9 backend services are confirmed `Healthy` and `Running`** in the
-cluster: gateway, booking, notification, payment, requester, user-service.
-`quality` (the live EC2 QA branch) was deliberately never touched by any of
-this — every fix below only reads from it, never pushes/merges into it.
+**Status: LIVE and verified end-to-end for every repo.** `main` is merged and
+pushed in all 15 repos. ArgoCD's `argocd/root-app.yaml` is applied on the
+`k3d-landers-app` cluster, the old JFrog Artifactory pod/svc/pvc is deleted.
+**8 of 9 backend services + both frontends are confirmed `Healthy`/`Running`**
+in the cluster: gateway, booking, notification, payment, requester, user,
+admin, landlord-service, lander-web, admin-dashboard. `quality` (the live EC2
+QA branch) was deliberately never touched by any of this — every fix below
+only reads from it, never pushes/merges into it. (corporate-service's pod
+status not yet re-verified after its conflict fix — check it once you're back
+in the cluster.)
 
-## Known issues right now
+## Resolved: admin-service, landlord-service, corporate-service, Admin-Dashboard-Front-End
 
-- **admin-service, landlord-service, corporate-service, Admin-Dashboard-Front-End**:
-  still on the OLD pre-migration state (JFrog pom.xml/no workflow for the 3
-  backend repos; no CI workflow at all on Admin-Dashboard-Front-End's `main`).
-  Root cause, same for all 4: while merging `development` → `main` across 15
-  repos, these 4 got `quality` merged into `main` by mistake instead of
-  `development` (a bookkeeping bug — see [[cicd_migration_jenkins_to_ghactions_argocd_2026_08_05]]
-  in Claude's memory for the full story). Retrying properly (`development` →
-  `main`) hits **real application-code merge conflicts** every time — 7 files
-  in admin-service, 1 in landlord-service, 1 in corporate-service, 16 in
-  Admin-Dashboard-Front-End (login, dashboard, users/corporates/landlords/
-  requesters pages). All 4 are the admin-dashboard feature area specifically —
-  `quality` has substantial real work here that `development` never got, and
-  in several files `development` *also* independently added conflicting
-  content (not just "missing", genuinely diverged both ways). This needs a
-  human to reconcile which version of each conflicting file is correct — do
-  not auto-merge. Until that's done, these 4 repos have no CI workflow
-  running on `main` at all (so no failures, but also no GitHub
-  Packages/ghcr.io pipeline, and no pods deployed for admin/landlord/corporate-
-  service or admin-dashboard).
-- **Landers-Web-Site**: `main` is branch-protected (PR required). The
-  reconciled commit (merges a real pre-existing local/remote divergence +
-  adds the CI workflow) is pushed to branch `ci-cd-migration-to-main` —
-  open/merge that PR when ready.
+These 4 got `quality` merged into `main` by mistake instead of `development`
+during the initial bulk migration (a bookkeeping bug — see
+[[cicd_migration_jenkins_to_ghactions_argocd_2026_08_05]] in Claude's memory
+for the full story), which meant no CI workflow / GitHub Packages pom.xml
+ever landed on their `main`. Redone properly (`development` → `main`), which
+surfaced real application-code conflicts in all 4 — 7 files in admin-service,
+1 in landlord-service, 1 in corporate-service, 16 in Admin-Dashboard-Front-End
+(login, dashboard, users/corporates/landlords/requesters pages). Every single
+conflict was checked by hand (diffed both sides, not just line counts) and
+resolved by keeping `main`'s (i.e. `quality`'s) version — in every case
+`development` was strictly behind, never had unique content `main` lacked.
+Notably: `main` has the phone-based admin login (`development` still had the
+pre-2026-08-01 email login), the AuthService/ToastService-based error
+interceptor, and an `untracked()` refetch-loop fix — all real shipped fixes
+`development` had simply never received. `environment.ts` in
+Admin-Dashboard-Front-End was the one deliberate exception (kept
+`development`'s localhost value) since Angular's `production` build config
+replaces that file entirely via `fileReplacements` — it's never actually used
+in the CI-built artifact either way.
+
+- **Landers-Web-Site**: `main` is branch-protected (PR required) — this one's
+  done: the reconciled commit (real pre-existing local/remote divergence +
+  the CI workflow) was opened as PR #1 from branch `ci-cd-migration-to-main`
+  and merged. `lander-web` is confirmed `Healthy`/`Running`.
 - **user-service**: GitHub's default branch is still `feature/user-service-auth`
   (a `main` branch didn't exist before this migration — created it fresh from
   `development`). Cosmetic only; doesn't block the CI trigger. Fix in repo
