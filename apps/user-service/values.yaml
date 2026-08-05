@@ -2,7 +2,7 @@ nameOverride: user-service
 
 image:
   repository: ghcr.io/landersfolk/user-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in user-service
+  tag: "72cb75f"
   pullPolicy: Always
 
 containerPort: 7075
