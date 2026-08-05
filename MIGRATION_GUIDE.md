@@ -1,15 +1,16 @@
 # Jenkins/JFrog → GitHub Actions/ArgoCD migration (2026-08-05)
 
-**Status: LIVE and verified end-to-end for every repo.** `main` is merged and
-pushed in all 15 repos. ArgoCD's `argocd/root-app.yaml` is applied on the
-`k3d-landers-app` cluster, the old JFrog Artifactory pod/svc/pvc is deleted.
-**8 of 9 backend services + both frontends are confirmed `Healthy`/`Running`**
-in the cluster: gateway, booking, notification, payment, requester, user,
-admin, landlord-service, lander-web, admin-dashboard. `quality` (the live EC2
-QA branch) was deliberately never touched by any of this — every fix below
-only reads from it, never pushes/merges into it. (corporate-service's pod
-status not yet re-verified after its conflict fix — check it once you're back
-in the cluster.)
+**Status: `main` merged and pushed in all 15 repos.** ArgoCD's
+`argocd/root-app.yaml` is applied on the `k3d-landers-app` cluster, the old
+JFrog Artifactory pod/svc/pvc is deleted. **6 of 9 backend services + 1 of 2
+frontends are confirmed `Healthy`/`Running`** in the cluster: gateway,
+booking, notification, payment, requester, user-service, lander-web.
+admin-service, landlord-service, corporate-service, admin-dashboard just had
+their merge conflicts resolved and pushed to `main` — their first real CI run
+under the fixed pom.xml/workflow is in flight as of this note, not yet
+confirmed deployed. `quality` (the live EC2 QA branch) was deliberately never
+touched by any of this — every fix below only reads from it, never
+pushes/merges into it.
 
 ## Resolved: admin-service, landlord-service, corporate-service, Admin-Dashboard-Front-End
 
