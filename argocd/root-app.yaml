@@ -1,0 +1,24 @@
+# App-of-apps: apply this ONE Application (kubectl apply -f argocd/root-app.yaml,
+# once, manually) and ArgoCD takes over managing every Application under
+# argocd/applications/ from then on — add/remove a service by adding/removing its
+# file there, no further manual kubectl needed.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: landers-app-root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/landersfolk/Landers-App-Platform-Essentials.git
+    targetRevision: main
+    path: argocd/applications
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

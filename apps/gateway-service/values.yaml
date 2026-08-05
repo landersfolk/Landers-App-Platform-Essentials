@@ -1,0 +1,30 @@
+nameOverride: gateway-service
+
+image:
+  repository: ghcr.io/landersfolk/gateway-service
+  tag: "0f8701c"
+  pullPolicy: Always
+
+containerPort: 7070
+
+service:
+  port: 7070
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+# dev cluster (k3d-landers-app): TOKEN auth with the shared root token,
+# matching every service's own application.yml default and
+# vault-seed-secrets.sh. QA/prod overrides this to authMethod: APPROLE +
+# secretName: gateway-service-vault-creds (see vault-production/setup-approle.sh).
+vault:
+  enabled: true
+  host: vault-server
+  port: "8200"
+  scheme: http
+  authMethod: TOKEN
+  token: root
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus

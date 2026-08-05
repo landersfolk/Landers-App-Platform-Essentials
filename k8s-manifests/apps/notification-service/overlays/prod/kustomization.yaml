@@ -1,0 +1,33 @@
+# prod overlay — NOT wired to an ArgoCD Application yet (that's Step 8, last,
+# after dev and staging are both confirmed working). Included now only to match
+# the target directory layout.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: notification-service
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: "prod"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+
+images:
+  - name: jfrog-artifactory:8082/docker-local/notification-service
+    newTag: IMAGE_TAG_PLACEHOLDER

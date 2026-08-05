@@ -1,0 +1,62 @@
+# Base Deployment for notification-service. This is the shared definition every
+# environment (dev/staging/prod) starts from — overlays/<env>/kustomization.yaml
+# patches replicas, resource limits, and the image tag on top of this.
+#
+# image tag is a placeholder: ArgoCD Image Updater rewrites the real tag directly
+# in each overlay's kustomization.yaml (see overlays/dev/kustomization.yaml's
+# `images:` block) once it detects a new build in the registry — nobody edits
+# IMAGE_TAG_PLACEHOLDER by hand.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7078"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      containers:
+        - name: notification-service
+          image: jfrog-artifactory:8082/docker-local/notification-service:IMAGE_TAG_PLACEHOLDER
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 7078
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev"
+            - name: VAULT_HOST
+              value: "vault-prod"
+            - name: VAULT_PORT
+              value: "8200"
+            - name: VAULT_SCHEME
+              value: "http"
+            - name: VAULT_AUTH_METHOD
+              value: "APPROLE"
+            - name: VAULT_ROLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: notification-service-vault-creds
+                  key: role_id
+            - name: VAULT_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: notification-service-vault-creds
+                  key: secret_id
+          # Minimal baseline — overlays/<env>/kustomization.yaml patches these per
+          # environment (dev stays small, staging/prod scale up).
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

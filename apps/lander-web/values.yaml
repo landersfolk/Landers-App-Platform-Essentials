@@ -1,0 +1,19 @@
+nameOverride: lander-web
+
+image:
+  repository: ghcr.io/landersfolk/lander-web
+  tag: "e341f83"
+  pullPolicy: Always
+
+containerPort: 80
+
+service:
+  port: 80
+
+env: {}
+
+vault:
+  enabled: false
+
+prometheus:
+  enabled: false

@@ -1,0 +1,19 @@
+nameOverride: admin-dashboard
+
+image:
+  repository: ghcr.io/landersfolk/admin-dashboard
+  tag: "12198b2"
+  pullPolicy: Always
+
+containerPort: 80
+
+service:
+  port: 80
+
+env: {}
+
+vault:
+  enabled: false
+
+prometheus:
+  enabled: false

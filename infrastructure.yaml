@@ -9,8 +9,13 @@
 # the correct ones — re-applying this file for its actually-still-needed Artifactory
 # section silently clobbered the real Keycloak/Redis config back to old dev-mode
 # defaults (discovered for real 2026-07-24, mid-QA-setup, requiring a live-cluster
-# recovery). This file now contains ONLY the RBAC block and Artifactory — the two
-# pieces Part 7.3 of EC2_QA_Environment_Setup_Guide.txt actually still needs from it.
+# recovery). This file now contains ONLY the RBAC block — Artifactory was removed
+# 2026-08-05 as part of the Jenkins/JFrog -> GitHub Actions/ArgoCD/GHCR/GitHub
+# Packages migration (see MIGRATION_GUIDE.md). The in-cluster artifactory
+# Deployment/Service/PVC are no longer applied by anything; if they're still
+# running on a live cluster from before this migration, delete them by hand
+# (kubectl delete deployment/artifactory svc/jfrog-artifactory pvc/artifactory-data)
+# — see MIGRATION_GUIDE.md's "Kubernetes cleanup" section.
 # ========================================================
 # 1. RBAC CONFIGURATION
 # Allows Spring Boot to read its own configuration from K8s
@@ -44,55 +49,3 @@ roleRef:
   kind: Role
   name: config-reader
   apiGroup: rbac.authorization.k8s.io
-
-# ==========================================
-# 2. ARTIFACTORY (JFrog)
-# ==========================================
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: artifactory-data
-spec:
-  accessModes: [ReadWriteOnce]
-  resources: { requests: { storage: 5Gi } }
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: jfrog-artifactory
-spec:
-  selector:
-    app: artifactory
-  ports:
-    - name: api
-      port: 8082
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: artifactory
-spec:
-  selector:
-    matchLabels:
-      app: artifactory
-  template:
-    metadata:
-      labels:
-        app: artifactory
-    spec:
-      containers:
-      - name: artifactory
-        image: releases-docker.jfrog.io/jfrog/artifactory-oss:7.71.5
-        resources:
-          requests:
-            memory: "2Gi"
-        ports:
-        - containerPort: 8082
-        volumeMounts:
-        - name: storage
-          mountPath: /var/opt/jfrog/artifactory
-      volumes:
-      - name: storage
-        persistentVolumeClaim:
-          claimName: artifactory-data

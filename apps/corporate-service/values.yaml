@@ -1,0 +1,30 @@
+nameOverride: corporate-service
+
+image:
+  repository: ghcr.io/landersfolk/corporate-service
+  tag: "164a1fd"
+  pullPolicy: Always
+
+containerPort: 7074
+
+service:
+  port: 7074
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+# dev cluster (k3d-landers-app): TOKEN auth with the shared root token,
+# matching every service's own application.yml default and
+# vault-seed-secrets.sh. QA/prod overrides this to authMethod: APPROLE +
+# secretName: corporate-service-vault-creds (see vault-production/setup-approle.sh).
+vault:
+  enabled: true
+  host: vault-server
+  port: "8200"
+  scheme: http
+  authMethod: TOKEN
+  token: root
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus

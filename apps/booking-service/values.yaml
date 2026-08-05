@@ -1,0 +1,30 @@
+nameOverride: booking-service
+
+image:
+  repository: ghcr.io/landersfolk/booking-service
+  tag: "b0de354"
+  pullPolicy: Always
+
+containerPort: 7076
+
+service:
+  port: 7076
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+# dev cluster (k3d-landers-app): TOKEN auth with the shared root token,
+# matching every service's own application.yml default and
+# vault-seed-secrets.sh. QA/prod overrides this to authMethod: APPROLE +
+# secretName: booking-service-vault-creds (see vault-production/setup-approle.sh).
+vault:
+  enabled: true
+  host: vault-server
+  port: "8200"
+  scheme: http
+  authMethod: TOKEN
+  token: root
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus
