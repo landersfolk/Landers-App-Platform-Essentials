@@ -2,7 +2,7 @@ nameOverride: requester-service
 
 image:
   repository: ghcr.io/landersfolk/requester-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in requester-service
+  tag: "d4dc89d"
   pullPolicy: Always
 
 containerPort: 7072

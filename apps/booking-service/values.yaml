@@ -2,7 +2,7 @@ nameOverride: booking-service
 
 image:
   repository: ghcr.io/landersfolk/booking-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in booking-service
+  tag: "b0de354"
   pullPolicy: Always
 
 containerPort: 7076
