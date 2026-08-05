@@ -2,7 +2,7 @@ nameOverride: gateway-service
 
 image:
   repository: ghcr.io/landersfolk/gateway-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in gateway-service
+  tag: "ba3f798"
   pullPolicy: Always
 
 containerPort: 7070

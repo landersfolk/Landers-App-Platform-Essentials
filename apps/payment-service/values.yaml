@@ -2,7 +2,7 @@ nameOverride: payment-service
 
 image:
   repository: ghcr.io/landersfolk/payment-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in payment-service
+  tag: "14bf296"
   pullPolicy: Always
 
 containerPort: 7077
