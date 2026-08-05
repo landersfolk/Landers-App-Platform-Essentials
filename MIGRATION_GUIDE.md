@@ -221,21 +221,22 @@ kubectl get pods -A | grep -Ei 'artifactory|jenkins'
 
 ## Known follow-ups (not done here)
 
-- Single environment only (`qa` `SPRING_PROFILES_ACTIVE` baked into each
-  `apps/<service>/values.yaml`). For a real prod environment, either add a
-  second `apps/<service>/values-prod.yaml` + a second ArgoCD Application per
-  service, or parameterize further — kept out of scope to avoid over-building
-  before there's a second real environment to point it at.
-- Frontend `Service`s are plain `ClusterIP`-shaped (matches the existing
-  backend pattern) — the old `deploy/10-deploy-frontend.sh`'s
-  `LoadBalancer`-on-a-host-port + ALB target group wiring for
-  lander-web/admin-dashboard isn't reproduced in the chart; add it if the new
-  pipeline needs to fully replace that script's job.
-- `data-module`'s remote moved from `landers-app/data-module` to
-  `landersfolk/data-module` (GitHub told us on push) — the pom.xml/workflow
-  changes here already target the new `landersfolk` URL, but the local clone's
-  `git remote` still points at the old one; update it when convenient
-  (`git remote set-url origin git@github.com:landersfolk/data-module.git`).
-- `Jenkins-Shared-Library` repo and the top-level `Jenkinsfile` (on this repo's
-  `quality` branch) are now unused but weren't deleted — nothing references
-  them anymore, safe to archive once confirmed.
+- Only one environment per branch is wired (`main` → dev k3d, `quality` → QA
+  EC2) — no `prod` yet. When a real prod cluster/branch exists, follow the
+  exact same pattern: a third `targetRevision` on the Application manifests,
+  `APPROLE` Vault (already the QA pattern, just point at prod's Vault/AppRole
+  role IDs once bootstrapped there), and check `kubectl get svc` on that
+  cluster for any `LoadBalancer` overrides before the first sync — don't
+  assume QA's port-mapping quirks (see "QA EC2 rollout" above) carry over
+  unchanged.
+- Local dev machine cleanup, low-risk, do whenever convenient:
+  - `data-module`'s local git remote still points at the old
+    `landers-app/data-module` URL (GitHub auto-redirects, but worth fixing):
+    `git remote set-url origin git@github.com:landersfolk/data-module.git`
+  - `Jenkins-Shared-Library` repo — nothing references it anymore (QA's
+    Jenkins jobs are disabled, Jenkins/Artifactory pods + PVCs are deleted
+    from the QA cluster entirely as of 2026-08-05). Archive it via GitHub's
+    repo settings when convenient.
+  - The top-level `Jenkinsfile` on this repo's `quality` branch
+    (`configMapPipeline()`) is inert now — nothing runs it — but wasn't
+    removed; low priority, delete whenever.
