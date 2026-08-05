@@ -1,24 +1,34 @@
 # Jenkins/JFrog → GitHub Actions/ArgoCD migration (2026-08-05)
 
-**Status: LIVE.** `main` has been merged and pushed in 12 of 15 repos, ArgoCD's
-`argocd/root-app.yaml` is applied on the `k3d-landers-app` cluster, and the old
-JFrog Artifactory pod/svc/pvc is deleted. `quality` (the live EC2 QA branch)
-was deliberately never touched by any of this.
+**Status: LIVE and mostly verified end-to-end.** `main` is merged and pushed
+in 12 of 15 repos, ArgoCD's `argocd/root-app.yaml` is applied on the
+`k3d-landers-app` cluster, the old JFrog Artifactory pod/svc/pvc is deleted,
+and **6 of 9 backend services are confirmed `Healthy` and `Running`** in the
+cluster: gateway, booking, notification, payment, requester, user-service.
+`quality` (the live EC2 QA branch) was deliberately never touched by any of
+this — every fix below only reads from it, never pushes/merges into it.
 
-## Known issues on `main` right now
+## Known issues right now
 
-- **admin-service, landlord-service, corporate-service**: still on the OLD
-  JFrog pom.xml/no-workflow state. Their `development` branches have the full
-  CI/CD migration + the id-collision fix below, but merging `development` →
-  `main` hits real **application-code merge conflicts** (e.g.
-  `AdminCorporateService.java`, `AdminDashboardService.java`,
-  `AdminRequesterService.java`) — `main` (via an earlier accidental
-  `quality`→`main` merge on these 3 repos only) and `development` have
-  independently diverged real feature work, not just CI/CD scaffolding. This
-  needs a human to reconcile which version of each conflicting file is
-  correct — do not auto-merge. Until that's done, these 3 repos have no CI
-  workflow running on `main` at all (so no failures, but also no GitHub
-  Packages/ghcr.io pipeline).
+- **admin-service, landlord-service, corporate-service, Admin-Dashboard-Front-End**:
+  still on the OLD pre-migration state (JFrog pom.xml/no workflow for the 3
+  backend repos; no CI workflow at all on Admin-Dashboard-Front-End's `main`).
+  Root cause, same for all 4: while merging `development` → `main` across 15
+  repos, these 4 got `quality` merged into `main` by mistake instead of
+  `development` (a bookkeeping bug — see [[cicd_migration_jenkins_to_ghactions_argocd_2026_08_05]]
+  in Claude's memory for the full story). Retrying properly (`development` →
+  `main`) hits **real application-code merge conflicts** every time — 7 files
+  in admin-service, 1 in landlord-service, 1 in corporate-service, 16 in
+  Admin-Dashboard-Front-End (login, dashboard, users/corporates/landlords/
+  requesters pages). All 4 are the admin-dashboard feature area specifically —
+  `quality` has substantial real work here that `development` never got, and
+  in several files `development` *also* independently added conflicting
+  content (not just "missing", genuinely diverged both ways). This needs a
+  human to reconcile which version of each conflicting file is correct — do
+  not auto-merge. Until that's done, these 4 repos have no CI workflow
+  running on `main` at all (so no failures, but also no GitHub
+  Packages/ghcr.io pipeline, and no pods deployed for admin/landlord/corporate-
+  service or admin-dashboard).
 - **Landers-Web-Site**: `main` is branch-protected (PR required). The
   reconciled commit (merges a real pre-existing local/remote divergence +
   adds the CI workflow) is pushed to branch `ci-cd-migration-to-main` —
@@ -27,6 +37,13 @@ was deliberately never touched by any of this.
   (a `main` branch didn't exist before this migration — created it fresh from
   `development`). Cosmetic only; doesn't block the CI trigger. Fix in repo
   settings when convenient.
+- **commons-module**: `development`/`main` were also missing a large chunk of
+  `quality`'s real work (admin-dashboard DTOs/Feign clients across corporate/
+  landlord/requester/payment/booking + Flyway V91-V96) — this one WAS merged
+  in cleanly (4 small conflicts, all "development's version was a strict
+  subset of quality's", resolved by taking quality's side) since it's a
+  shared library, not a specific service's business logic. Already published
+  and live — this is what unblocked booking/requester/user-service's builds.
 
 ## Post-launch fix: Maven repository id collision (2026-08-05, same day)
 
