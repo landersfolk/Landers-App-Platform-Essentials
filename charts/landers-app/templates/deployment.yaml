@@ -44,6 +44,10 @@ spec:
               value: {{ .Values.vault.scheme | quote }}
             - name: VAULT_AUTH_METHOD
               value: {{ .Values.vault.authMethod | quote }}
+            {{- if eq .Values.vault.authMethod "APPROLE" }}
+            # QA/prod: scoped AppRole identity per service (see
+            # vault-production/setup-approle.sh), role_id/secret_id from a
+            # pre-created k8s Secret named vault.secretName.
             - name: VAULT_ROLE_ID
               valueFrom:
                 secretKeyRef:
@@ -54,6 +58,14 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.vault.secretName }}
                   key: secret_id
+            {{- else }}
+            # dev (this cluster): shared root token, matching every service's
+            # own application.yml default (VAULT_AUTH_METHOD unset -> TOKEN)
+            # and vault-seed-secrets.sh's `vault login root`. No k8s Secret
+            # needed -- same as running the service locally from an IDE.
+            - name: VAULT_TOKEN
+              value: {{ .Values.vault.token | quote }}
+            {{- end }}
             {{- end }}
           {{- with .Values.resources }}
           resources:

@@ -13,13 +13,17 @@ service:
 env:
   SPRING_PROFILES_ACTIVE: qa
 
+# dev cluster (k3d-landers-app): TOKEN auth with the shared root token,
+# matching every service's own application.yml default and
+# vault-seed-secrets.sh. QA/prod overrides this to authMethod: APPROLE +
+# secretName: landlord-service-vault-creds (see vault-production/setup-approle.sh).
 vault:
   enabled: true
-  host: vault-prod
+  host: vault-server
   port: "8200"
   scheme: http
-  authMethod: APPROLE
-  secretName: landlord-service-vault-creds
+  authMethod: TOKEN
+  token: root
 
 prometheus:
   enabled: true
