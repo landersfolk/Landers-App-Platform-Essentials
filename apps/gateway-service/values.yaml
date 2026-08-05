@@ -8,6 +8,7 @@ image:
 containerPort: 7070
 
 service:
+  type: LoadBalancer
   port: 7070
 
 env:

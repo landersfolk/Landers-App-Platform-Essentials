@@ -21,6 +21,10 @@ containerPort: 8080
 
 service:
   port: 8080
+  # ClusterIP for everything by default. Override to LoadBalancer for
+  # externally-routed services (gateway-service, the two frontends on QA/prod)
+  # -- matches the ALB target group / host-port routing those already use.
+  type: ClusterIP
 
 # Plain string env vars merged onto the container (SPRING_PROFILES_ACTIVE, etc).
 env: {}
