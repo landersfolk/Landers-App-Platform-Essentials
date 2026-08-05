@@ -2,7 +2,7 @@ nameOverride: lander-web
 
 image:
   repository: ghcr.io/landersfolk/lander-web
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in Landers-Web-Site
+  tag: "e341f83"
   pullPolicy: Always
 
 containerPort: 80
