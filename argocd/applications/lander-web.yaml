@@ -16,8 +16,8 @@ spec:
     server: https://kubernetes.default.svc
     namespace: default
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+    # Manual sync only on this cluster (live QA, real traffic) -- sync each
+    # Application by hand (argocd app sync <name> or the UI) after reviewing
+    # its diff, don't let ArgoCD auto-overwrite already-running pods.
     syncOptions:
       - CreateNamespace=false
