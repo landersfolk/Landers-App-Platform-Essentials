@@ -1,0 +1,19 @@
+nameOverride: admin-dashboard
+
+image:
+  repository: ghcr.io/landersfolk/admin-dashboard
+  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in Admin-Dashboard-Front-End
+  pullPolicy: Always
+
+containerPort: 80
+
+service:
+  port: 80
+
+env: {}
+
+vault:
+  enabled: false
+
+prometheus:
+  enabled: false

@@ -1,0 +1,26 @@
+nameOverride: payment-service
+
+image:
+  repository: ghcr.io/landersfolk/payment-service
+  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in payment-service
+  pullPolicy: Always
+
+containerPort: 7077
+
+service:
+  port: 7077
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+vault:
+  enabled: true
+  host: vault-prod
+  port: "8200"
+  scheme: http
+  authMethod: APPROLE
+  secretName: payment-service-vault-creds
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: landers-app
+description: Generic chart for a Landers App service (Spring Boot backend or static frontend). One Deployment + one Service, parameterized entirely by values.yaml — used by every service via apps/<service>/values.yaml.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

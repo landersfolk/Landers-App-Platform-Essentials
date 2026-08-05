@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "landers-app.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "landers-app.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "landers-app.name" . }}
+      {{- if .Values.prometheus.enabled }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.containerPort }}"
+        prometheus.io/path: "{{ .Values.prometheus.path }}"
+      {{- end }}
+    spec:
+      containers:
+        - name: {{ include "landers-app.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.containerPort }}
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- if .Values.vault.enabled }}
+            - name: VAULT_HOST
+              value: {{ .Values.vault.host | quote }}
+            - name: VAULT_PORT
+              value: {{ .Values.vault.port | quote }}
+            - name: VAULT_SCHEME
+              value: {{ .Values.vault.scheme | quote }}
+            - name: VAULT_AUTH_METHOD
+              value: {{ .Values.vault.authMethod | quote }}
+            - name: VAULT_ROLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vault.secretName }}
+                  key: role_id
+            - name: VAULT_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vault.secretName }}
+                  key: secret_id
+            {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

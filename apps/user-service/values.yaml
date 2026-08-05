@@ -1,0 +1,26 @@
+nameOverride: user-service
+
+image:
+  repository: ghcr.io/landersfolk/user-service
+  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in user-service
+  pullPolicy: Always
+
+containerPort: 7075
+
+service:
+  port: 7075
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+vault:
+  enabled: true
+  host: vault-prod
+  port: "8200"
+  scheme: http
+  authMethod: APPROLE
+  secretName: user-service-vault-creds
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus

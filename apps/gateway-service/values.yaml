@@ -1,0 +1,26 @@
+nameOverride: gateway-service
+
+image:
+  repository: ghcr.io/landersfolk/gateway-service
+  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in gateway-service
+  pullPolicy: Always
+
+containerPort: 7070
+
+service:
+  port: 7070
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+vault:
+  enabled: true
+  host: vault-prod
+  port: "8200"
+  scheme: http
+  authMethod: APPROLE
+  secretName: gateway-service-vault-creds
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus
