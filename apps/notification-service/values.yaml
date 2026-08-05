@@ -2,7 +2,7 @@ nameOverride: notification-service
 
 image:
   repository: ghcr.io/landersfolk/notification-service
-  tag: "latest"   # overwritten by CI on every push to main — see .github/workflows/ci.yml in notification-service
+  tag: "cb7e391"
   pullPolicy: Always
 
 containerPort: 7078
