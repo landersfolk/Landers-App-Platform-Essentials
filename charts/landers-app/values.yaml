@@ -8,6 +8,15 @@ image:
   tag: "latest"
   pullPolicy: Always
 
+# ghcr.io packages pushed via GITHUB_TOKEN from a private repo default to
+# private visibility -- every service needs this to actually pull its image.
+# Create the Secret once per cluster/namespace:
+#   kubectl create secret docker-registry ghcr-pull-secret \
+#     --docker-server=ghcr.io --docker-username=<gh-username> \
+#     --docker-password=<PACKAGES_PAT PAT value> -n default
+imagePullSecrets:
+  - ghcr-pull-secret
+
 containerPort: 8080
 
 service:
