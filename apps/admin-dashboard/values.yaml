@@ -21,3 +21,18 @@ vault:
 
 prometheus:
   enabled: false
+
+# nginx serving a static Angular build — far lighter than the chart's
+# backend-sized default (JVM services).
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# nginx has no /actuator/health; "/" (the dashboard itself) is what's
+# actually being served.
+probes:
+  path: /

@@ -71,6 +71,13 @@ metadata:
   name: prometheus
 spec:
   replicas: 1
+  # RollingUpdate (the default) tries to start the new pod before killing
+  # the old one to minimize downtime - but this PVC is ReadWriteOnce and
+  # Prometheus's TSDB takes an exclusive lock on it, so the new pod fails
+  # to start with "lock DB directory: resource temporarily unavailable"
+  # while the old one is still up. Recreate kills the old pod first.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: prometheus
@@ -95,6 +102,29 @@ spec:
           mountPath: /etc/prometheus
         - name: storage
           mountPath: /prometheus
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9091
+          initialDelaySeconds: 15
+          periodSeconds: 15
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9091
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
       volumes:
       - name: config
         configMap:

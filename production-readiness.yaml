@@ -1,0 +1,69 @@
+# Cluster-wide/namespace-wide policy objects added as part of a production-
+# readiness pass (priority classes, resource governance for the `default`
+# namespace — where every app service, Keycloak, Vault, Kafka, Redis, and the
+# LGTM stack all currently run). Apply once per cluster:
+#   kubectl apply -f production-readiness.yaml
+#
+# ResourceQuota below is sized against this cluster's real node capacity
+# (QA EC2, confirmed live: 8 CPU / ~32Gi allocatable, single node) and
+# current actual usage (~3.5 CPU / ~7.7Gi requested across every pod in
+# `default` today) — leaves real headroom for growth and for kube-system,
+# while still bounding a runaway/misconfigured deployment. Re-check node
+# capacity before reusing this file as-is against a differently-sized
+# cluster (e.g. a future prod environment).
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: critical-infra
+value: 100000
+globalDefault: false
+description: >-
+  For platform-critical infrastructure (Keycloak, Vault) that every other
+  service depends on to function at all. Well above default app pods
+  (implicit priority 0) so the scheduler/kubelet prefers keeping these
+  running and prioritizes scheduling them first, but well below true
+  cluster-system priority classes (system-cluster-critical /
+  system-node-critical, ~2000000000+) so this never competes with real
+  Kubernetes system components.
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: default
+spec:
+  limits:
+    - type: Container
+      # Applied to any container that doesn't set its own resources
+      # (defense in depth — every Deployment/StatefulSet in this repo now
+      # sets explicit resources, but this protects against a future one
+      # that forgets to).
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 256Mi
+      # Bounds even on containers that DO set their own resources — catches
+      # an obvious typo (e.g. "50" instead of "50m") before it eats the
+      # whole node.
+      max:
+        cpu: "2"
+        memory: 4Gi
+      min:
+        cpu: 10m
+        memory: 32Mi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: default-quota
+  namespace: default
+spec:
+  hard:
+    requests.cpu: "6"
+    requests.memory: 24Gi
+    limits.cpu: "8"
+    limits.memory: 28Gi
+    pods: "60"

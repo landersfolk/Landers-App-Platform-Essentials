@@ -50,7 +50,49 @@ prometheus:
   enabled: false
   path: /actuator/prometheus
 
-resources: {}
+# Sized for a Spring Boot 3.5/JVM 21 service under modest QA/dev load — in the
+# same ballpark as this cluster's Keycloak/Vault sizing for consistency.
+# Frontends override this with a much lighter nginx-appropriate profile (see
+# apps/lander-web and apps/admin-dashboard values.yaml).
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Liveness/readiness/startup probes. path defaults to Spring Actuator's health
+# endpoint on the same containerPort apps already expose it on (confirmed
+# already reachable there — gateway-service's own SecurityConfig permits
+# /actuator/health, and /actuator/prometheus scraping already works on this
+# port for every backend service). Frontends override path to "/" (nginx has
+# no /actuator/health) — see apps/lander-web and apps/admin-dashboard.
+#
+# A startupProbe (not just liveness/readiness) is used deliberately: Flyway
+# migrations + full Spring context startup can take well beyond a fixed
+# initialDelaySeconds, and a slow-starting pod getting killed by liveness
+# mid-migration is worse than a plain slow start. Once startupProbe succeeds,
+# liveness/readiness take over with their own tighter periodSeconds.
+probes:
+  enabled: true
+  path: /actuator/health
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+  startupFailureThreshold: 30
+  startupPeriodSeconds: 5
+
+# Graceful shutdown window (SIGTERM -> SIGKILL). Spring Boot's own graceful
+# shutdown (server.shutdown=graceful, already the framework default) needs
+# real time to drain in-flight requests before the process gets killed.
+terminationGracePeriodSeconds: 30
+
+# Empty by default — set per-service (e.g. to a "critical-infra" PriorityClass)
+# for anything the rest of the platform can't function without. None of the
+# 11 app services set this today; it exists in the chart for consistency and
+# in case that changes (e.g. gateway-service, being the sole ingress point).
+priorityClassName: ""
 
 # Set true to add a basic CPU-based HPA. Off by default — keep it simple until needed.
 autoscaling:
