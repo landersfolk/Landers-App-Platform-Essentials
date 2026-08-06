@@ -2,7 +2,7 @@ nameOverride: gateway-service
 
 image:
   repository: ghcr.io/landersfolk/gateway-service
-  tag: "5bd01b2"
+  tag: "8b9e262"
   pullPolicy: Always
 
 containerPort: 7070
