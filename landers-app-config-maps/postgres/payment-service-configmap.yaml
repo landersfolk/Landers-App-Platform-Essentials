@@ -16,6 +16,12 @@ data:
         driver-class-name: org.postgresql.Driver
         hikari:
           maximum-pool-size: 5
+      data:
+        redis:
+          host: localhost
+          port: 6379
+      cache:
+        type: redis
       flyway:
         enabled: true
         locations: classpath:db/migration
@@ -105,6 +111,12 @@ data:
         hikari:
           maximum-pool-size: 10
           connection-timeout: 30000
+      data:
+        redis:
+          host: redis-db
+          port: 6379
+      cache:
+        type: redis
       flyway:
         enabled: true
         locations: classpath:db/migration
@@ -201,6 +213,12 @@ data:
           minimum-idle: 10
           idle-timeout: 600000
           max-lifetime: 1800000
+      data:
+        redis:
+          host: redis-db-prod
+          port: 6379
+      cache:
+        type: redis
       flyway:
         enabled: true
         locations: classpath:db/migration
