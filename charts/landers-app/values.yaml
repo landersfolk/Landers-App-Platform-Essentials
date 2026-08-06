@@ -45,6 +45,19 @@ vault:
   secretName: ""
   token: ""
 
+# Infisical is replacing Vault for secrets management, service by service (each
+# needs its image rebuilt with the Infisical-integrated commons-cloud before its
+# values.yaml can safely flip vault.enabled: false / infisical.enabled: true —
+# dropping Vault env vars out from under a still-Vault-based image breaks it).
+# secretName points at a pre-created k8s Secret with INFISICAL_CLIENT_ID/
+# INFISICAL_CLIENT_SECRET keys (never committed here). env is the Infisical
+# environment slug for this cluster (dev/staging/prod - matches the project's
+# actual configured slugs, not the words "development"/"production").
+infisical:
+  enabled: false
+  env: prod
+  secretName: ""
+
 # Prometheus scrape annotations — backend services only (Spring Actuator).
 prometheus:
   enabled: false

@@ -71,6 +71,23 @@ spec:
               value: {{ .Values.vault.token | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.infisical.enabled }}
+            # Infisical replaces Vault for secrets management. Client ID/Secret come
+            # from a pre-created k8s Secret (see infisical.secretName) - never inlined
+            # here. INFISICAL_ENV selects the Infisical environment slug (dev/staging/prod).
+            - name: INFISICAL_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.infisical.secretName }}
+                  key: INFISICAL_CLIENT_ID
+            - name: INFISICAL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.infisical.secretName }}
+                  key: INFISICAL_CLIENT_SECRET
+            - name: INFISICAL_ENV
+              value: {{ .Values.infisical.env | quote }}
+            {{- end }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
