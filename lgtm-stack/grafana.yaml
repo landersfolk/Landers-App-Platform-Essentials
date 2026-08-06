@@ -1,3 +1,8 @@
+# Requires a pre-existing Secret "grafana-admin-credentials" (keys:
+# admin-user, admin-password) in this namespace, created out-of-band -
+# not committed to git. e.g.:
+#   kubectl create secret generic grafana-admin-credentials \
+#     --from-literal=admin-user=admin --from-literal=admin-password=<password>
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,9 +27,15 @@ spec:
         - containerPort: 3000
         env:
         - name: GF_SECURITY_ADMIN_USER
-          value: admin
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin-credentials
+              key: admin-user
         - name: GF_SECURITY_ADMIN_PASSWORD
-          value: admin
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin-credentials
+              key: admin-password
         - name: GF_SERVER_HTTP_PORT
           value: "3000"
         - name: GF_PATHS_DATA
@@ -77,5 +88,3 @@ spec:
   ports:
   - port: 3000
     targetPort: 3000
-
-# grafana dashboard password -> wRTTnxfRSmk2gdg
