@@ -38,12 +38,66 @@ data:
               stages:
                 - static_labels:
                     app: gateway-service
-          
+
           - match:
               selector: '{pod_name=~"landlord-service.*"}'
               stages:
                 - static_labels:
                     app: landlord-service
+
+          - match:
+              selector: '{pod_name=~"admin-service.*"}'
+              stages:
+                - static_labels:
+                    app: admin-service
+
+          - match:
+              selector: '{pod_name=~"booking-service.*"}'
+              stages:
+                - static_labels:
+                    app: booking-service
+
+          - match:
+              selector: '{pod_name=~"corporate-service.*"}'
+              stages:
+                - static_labels:
+                    app: corporate-service
+
+          - match:
+              selector: '{pod_name=~"requester-service.*"}'
+              stages:
+                - static_labels:
+                    app: requester-service
+
+          - match:
+              selector: '{pod_name=~"user-service.*"}'
+              stages:
+                - static_labels:
+                    app: user-service
+
+          - match:
+              selector: '{pod_name=~"payment-service.*"}'
+              stages:
+                - static_labels:
+                    app: payment-service
+
+          - match:
+              selector: '{pod_name=~"notification-service.*"}'
+              stages:
+                - static_labels:
+                    app: notification-service
+
+          - match:
+              selector: '{pod_name=~"admin-dashboard.*"}'
+              stages:
+                - static_labels:
+                    app: admin-dashboard
+
+          - match:
+              selector: '{pod_name=~"lander-web.*"}'
+              stages:
+                - static_labels:
+                    app: lander-web
 ---
 apiVersion: apps/v1
 kind: DaemonSet
