@@ -62,8 +62,21 @@ metadata:
   namespace: default
 spec:
   hard:
-    requests.cpu: "6"
+    # requests must fit real node capacity (8 CPU / ~30.8Gi allocatable) -
+    # left just under that ceiling since the scheduler enforces the real
+    # limit anyway; this just avoids the quota adding an artificial extra
+    # constraint below it. Covers the worst case of 7 backend services'
+    # HPAs (charts/landers-app: autoscaling maxReplicas: 3) all scaling to
+    # max simultaneously (~6.25 CPU / ~14.7Gi worth of additional requests
+    # on top of the current single-replica baseline).
+    requests.cpu: "7"
     requests.memory: 24Gi
-    limits.cpu: "8"
-    limits.memory: 28Gi
+    # limits are a declared-ceiling admission check, not a real resource
+    # promise (Kubernetes limits are meant to be overcommitted - CPU just
+    # throttles, doesn't OOM). Sized generously above the same HPA
+    # worst-case (~29 CPU / ~31Gi at full scale-out) so autoscaling is
+    # never blocked by quota admission, not because the node can actually
+    # deliver this much simultaneously.
+    limits.cpu: "32"
+    limits.memory: 36Gi
     pods: "60"
