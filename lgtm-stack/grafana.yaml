@@ -51,6 +51,10 @@ spec:
           mountPath: /var/lib/grafana
         - name: datasources
           mountPath: /etc/grafana/provisioning/datasources
+        - name: dashboard-provider
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboards
+          mountPath: /etc/grafana/dashboards
       volumes:
       - name: storage
         persistentVolumeClaim:
@@ -58,6 +62,12 @@ spec:
       - name: datasources
         configMap:
           name: grafana-datasources
+      - name: dashboard-provider
+        configMap:
+          name: grafana-dashboard-provider
+      - name: dashboards
+        configMap:
+          name: grafana-dashboards
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -68,14 +78,126 @@ data:
     apiVersion: 1
     datasources:
       - name: Prometheus
+        uid: prometheus
         type: prometheus
         access: proxy
         url: http://prometheus:9091
         isDefault: true
       - name: Loki
+        uid: loki
         type: loki
         access: proxy
         url: http://loki:3100
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        options:
+          path: /etc/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+data:
+  services-overview.json: |
+    {
+      "uid": "landers-services-overview",
+      "title": "Landers Services Overview",
+      "schemaVersion": 39,
+      "version": 1,
+      "editable": true,
+      "timezone": "browser",
+      "time": { "from": "now-1h", "to": "now" },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Services Up",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "up{namespace=\"default\"}", "legendFormat": "{{application}}", "refId": "A" }
+          ],
+          "options": { "textMode": "name", "colorMode": "background" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+              ],
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Request Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "targets": [
+            { "expr": "sum by (application) (rate(http_server_requests_seconds_count{namespace=\"default\"}[5m]))", "legendFormat": "{{application}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Error Rate (5xx)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "targets": [
+            { "expr": "sum by (application) (rate(http_server_requests_seconds_count{namespace=\"default\", status=~\"5..\"}[5m]))", "legendFormat": "{{application}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Avg Latency",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "ms" } },
+          "targets": [
+            { "expr": "1000 * sum by (application) (rate(http_server_requests_seconds_sum{namespace=\"default\"}[5m])) / sum by (application) (rate(http_server_requests_seconds_count{namespace=\"default\"}[5m]))", "legendFormat": "{{application}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "JVM Heap Used",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "bytes" } },
+          "targets": [
+            { "expr": "sum by (application) (jvm_memory_used_bytes{namespace=\"default\", area=\"heap\"})", "legendFormat": "{{application}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "CPU Usage",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "percentunit" } },
+          "targets": [
+            { "expr": "avg by (application) (process_cpu_usage{namespace=\"default\"})", "legendFormat": "{{application}}", "refId": "A" }
+          ]
+        }
+      ]
+    }
 ---
 apiVersion: v1
 kind: Service
