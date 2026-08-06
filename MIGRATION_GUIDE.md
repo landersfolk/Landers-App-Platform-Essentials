@@ -195,6 +195,66 @@ done here — the PAT is simpler and works today.
    CI run and confirm the image lands in `ghcr.io/landersfolk/<service>` and
    the ArgoCD Application syncs.
 
+## Accessing the ArgoCD dashboard
+
+ArgoCD's web UI is never exposed publicly on either cluster — reach it via a
+local port-forward (dev) or an SSM tunnel (QA), never a public subdomain, so
+there's no new attack surface beyond the IAM/kubeconfig access you already
+have.
+
+### Dev (k3d-landers-app)
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
+
+Open `https://localhost:8080`, accept the self-signed cert, log in as `admin`
+with the password above.
+
+### QA (EC2 `i-0285595f45e8d9f7d`, private subnet, cluster `landers-qa`)
+
+No direct network path exists into this subnet — SSM brokers the connection
+(via AWS's SSM service, not a raw tunnel), so access is gated purely by IAM
+(`ssm:StartSession` on this instance), not network reachability. Needs two
+terminals.
+
+**Terminal A — SSM into the box, forward ArgoCD's port on the instance itself:**
+
+```bash
+aws ssm start-session --region eu-west-1 --target i-0285595f45e8d9f7d
+```
+
+Inside that session:
+
+```bash
+export HOME=/root
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+nohup kubectl -n argocd port-forward svc/argocd-server 8080:443 > /tmp/argocd-pf.log 2>&1 & disown
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
+
+(`disown` keeps the tunnel alive even if the SSM session's job control hiccups;
+use `-n argocd` inline rather than `kubectl config set-context --current
+--namespace=argocd` — that flag persists in the real kubeconfig and has
+caused confusion before, see the CI/CD migration memory.)
+
+**Terminal B — on your own laptop, tunnel through SSM to that port:**
+
+```bash
+aws ssm start-session --region eu-west-1 --target i-0285595f45e8d9f7d --document-name AWS-StartPortForwardingSession --parameters '{"portNumber":["8080"],"localPortNumber":["8080"]}'
+```
+
+(Keep this as one line — pasted `\` line-continuations can pick up trailing
+whitespace and break.)
+
+Open `https://localhost:8080`, accept the self-signed cert, log in as `admin`
+with the password from Terminal A.
+
+When done: Ctrl+C both terminal sessions, and in Terminal A run
+`pkill -f "port-forward svc/argocd-server"` to stop the tunnel on the box
+rather than leaving it running.
+
 ## Kubernetes cleanup (do this by hand — nothing here touches a live cluster)
 
 Check what's actually still running first:
