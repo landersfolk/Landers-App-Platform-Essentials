@@ -140,6 +140,10 @@ spec:
       # profile (landers-ec2-s3-role), not a K8s-ServiceAccount-bound identity like
       # IRSA (that's an EKS-specific mechanism; this is plain k3s on one EC2 host).
       # The default ServiceAccount in this namespace is fine as-is.
+      #
+      # Vault is platform-critical — every service's secrets/config depend on
+      # it. See production-readiness.yaml for the PriorityClass definition.
+      priorityClassName: critical-infra
       containers:
         - name: vault
           image: hashicorp/vault:1.18

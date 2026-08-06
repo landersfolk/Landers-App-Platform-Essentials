@@ -46,6 +46,10 @@ data:
   KC_HOSTNAME: "__KEYCLOAK_HOSTNAME_URL__"
   KC_HOSTNAME_STRICT: "true"
   KC_HTTP_ENABLED: "true"
+  # Exposes /health/live and /health/ready on the separate management
+  # interface (port 9000 by default in Keycloak 26/Quarkus) — used by the
+  # Deployment's liveness/readiness probes below.
+  KC_HEALTH_ENABLED: "true"
 # Secret "keycloak-secret" is DELIBERATELY NOT DEFINED IN THIS FILE.
 #
 # It used to be here with placeholder stringData values, on the assumption that you'd
@@ -67,9 +71,6 @@ data:
 # (no --dry-run=client -o yaml | kubectl apply -f - this time — plain `kubectl create`,
 # specifically so a re-run of THIS file can never touch it again)
 ---
-# Deployment — no readiness/liveness probes configured yet. Fine for QA (a crashed
-# container still gets noticed via `kubectl get pods` showing CrashLoopBackOff either
-# way); add probes here if this pattern is ever promoted closer to real production.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -87,6 +88,10 @@ spec:
       labels:
         app: keycloak
     spec:
+      # Keycloak is platform-critical — every service's auth depends on it.
+      # See production-readiness.yaml for the PriorityClass definition.
+      priorityClassName: critical-infra
+      terminationGracePeriodSeconds: 30
       containers:
       - name: keycloak
         image: quay.io/keycloak/keycloak:26.0.7
@@ -100,6 +105,8 @@ spec:
         ports:
         - name: http
           containerPort: 8080
+        - name: management
+          containerPort: 9000
         env:
         - name: KEYCLOAK_ADMIN
           valueFrom:
@@ -151,6 +158,11 @@ spec:
             configMapKeyRef:
               name: keycloak-config
               key: KC_HTTP_ENABLED
+        - name: KC_HEALTH_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: keycloak-config
+              key: KC_HEALTH_ENABLED
         resources:
           requests:
             cpu: 500m
@@ -158,6 +170,29 @@ spec:
           limits:
             cpu: 1000m
             memory: 2Gi
+        # Startup can take a while (DB connection, realm import/caching) — a
+        # startupProbe gives it real headroom without loosening the tighter
+        # liveness/readiness periods once it's actually up.
+        startupProbe:
+          httpGet:
+            path: /health/started
+            port: 9000
+          periodSeconds: 5
+          failureThreshold: 30
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 9000
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 9000
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
 ---
 # Service — type: LoadBalancer (changed 2026-07-24), so k3s's ServiceLB binds this to
 # a real host port (8180) for the ALB to reach (public admin console access, KC_HOSTNAME
