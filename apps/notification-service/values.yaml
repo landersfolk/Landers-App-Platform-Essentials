@@ -19,7 +19,7 @@ env:
 # deploy/09-deploy-services.sh's Vault AppRole bootstrap step, not by
 # this chart).
 vault:
-  enabled: true
+  enabled: false
   host: vault-prod
   port: "8200"
   scheme: http
