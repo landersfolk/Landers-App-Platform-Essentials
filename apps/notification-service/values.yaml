@@ -26,6 +26,19 @@ vault:
   authMethod: APPROLE
   secretName: notification-service-vault-creds
 
+# Infisical is replacing Vault (see commons-cloud's InfisicalEnvironmentPostProcessor).
+# Left additive alongside vault: above (harmless extra env vars for the still-running
+# Vault-based image) until notification-service's own image is rebuilt from the migrated
+# source and vault.enabled can safely flip to false. secretName points at a
+# pre-created k8s Secret (kubectl create secret generic infisical-credentials
+# --from-literal=INFISICAL_CLIENT_ID=... --from-literal=INFISICAL_CLIENT_SECRET=...) -
+# never committed here. env=staging matches this project's actual configured slug
+# for QA (verified /DB and /KEYCLOAK secrets already exist there).
+infisical:
+  enabled: true
+  env: staging
+  secretName: infisical-credentials
+
 prometheus:
   enabled: true
   path: /actuator/prometheus
