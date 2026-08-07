@@ -13,25 +13,12 @@ service:
 env:
   SPRING_PROFILES_ACTIVE: qa
 
-# dev cluster (k3d-landers-app): TOKEN auth with the shared root token,
-# matching every service's own application.yml default and
-# vault-seed-secrets.sh. QA/prod overrides this to authMethod: APPROLE +
-# secretName: gateway-service-vault-creds (see vault-production/setup-approle.sh).
-vault:
-  enabled: false
-  host: vault-server
-  port: "8200"
-  scheme: http
-  authMethod: TOKEN
-  token: root
-
-# Infisical is replacing Vault (see commons-cloud's InfisicalEnvironmentPostProcessor).
-# Left additive alongside vault: above (harmless extra env vars for the still-running
-# Vault-based image) until gateway-service's own image is rebuilt from the migrated
-# source and vault.enabled can safely flip to false. secretName points at a
-# pre-created k8s Secret (kubectl create secret generic infisical-credentials
-# --from-literal=INFISICAL_CLIENT_ID=... --from-literal=INFISICAL_CLIENT_SECRET=...) -
-# never committed here. env=dev matches this project's actual configured slug.
+# Infisical replaces Vault for secrets management (see commons-cloud's
+# InfisicalEnvironmentPostProcessor). secretName points at a pre-created k8s
+# Secret (kubectl create secret generic infisical-credentials --from-literal=
+# INFISICAL_CLIENT_ID=... --from-literal=INFISICAL_CLIENT_SECRET=...) - never
+# committed here. env=dev matches this project's actual configured
+# Infisical environment slug for local k3d.
 infisical:
   enabled: true
   env: dev
