@@ -25,6 +25,18 @@ vault:
   authMethod: TOKEN
   token: root
 
+# Infisical is replacing Vault (see commons-cloud's InfisicalEnvironmentPostProcessor).
+# Left additive alongside vault: above (harmless extra env vars for the still-running
+# Vault-based image) until corporate-service's own image is rebuilt from the migrated
+# source and vault.enabled can safely flip to false. secretName points at a
+# pre-created k8s Secret (kubectl create secret generic infisical-credentials
+# --from-literal=INFISICAL_CLIENT_ID=... --from-literal=INFISICAL_CLIENT_SECRET=...) -
+# never committed here. env=dev matches this project's actual configured slug.
+infisical:
+  enabled: true
+  env: dev
+  secretName: infisical-credentials
+
 prometheus:
   enabled: true
   path: /actuator/prometheus
