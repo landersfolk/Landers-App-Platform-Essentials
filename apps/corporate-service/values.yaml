@@ -13,27 +13,12 @@ service:
 env:
   SPRING_PROFILES_ACTIVE: qa
 
-# QA (EC2, this branch): real per-service AppRole identity, matching
-# vault-production/setup-approle.sh. role_id/secret_id come from the
-# corporate-service-vault-creds k8s Secret (created by
-# deploy/09-deploy-services.sh's Vault AppRole bootstrap step, not by
-# this chart).
-vault:
-  enabled: false
-  host: vault-prod
-  port: "8200"
-  scheme: http
-  authMethod: APPROLE
-  secretName: corporate-service-vault-creds
-
-# Infisical is replacing Vault (see commons-cloud's InfisicalEnvironmentPostProcessor).
-# Left additive alongside vault: above (harmless extra env vars for the still-running
-# Vault-based image) until corporate-service's own image is rebuilt from the migrated
-# source and vault.enabled can safely flip to false. secretName points at a
-# pre-created k8s Secret (kubectl create secret generic infisical-credentials
-# --from-literal=INFISICAL_CLIENT_ID=... --from-literal=INFISICAL_CLIENT_SECRET=...) -
-# never committed here. env=staging matches this project's actual configured slug
-# for QA (verified /DB and /KEYCLOAK secrets already exist there).
+# Infisical replaces Vault for secrets management (see commons-cloud's
+# InfisicalEnvironmentPostProcessor). secretName points at a pre-created k8s
+# Secret (kubectl create secret generic infisical-credentials --from-literal=
+# INFISICAL_CLIENT_ID=... --from-literal=INFISICAL_CLIENT_SECRET=...) - never
+# committed here. env=staging matches this project's actual configured
+# Infisical environment slug for QA.
 infisical:
   enabled: true
   env: staging
