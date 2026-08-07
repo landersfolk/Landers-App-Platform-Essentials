@@ -71,6 +71,29 @@ spec:
               value: {{ .Values.vault.token | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.infisical.enabled }}
+            # Infisical replaces Vault for secrets management. Client ID/Secret come
+            # from a pre-created k8s Secret (see infisical.secretName) - never inlined
+            # here. INFISICAL_ENV selects the Infisical environment slug (dev/staging/prod).
+            # HOST/PROJECT_ID identify the shared Infisical Cloud project - overridable here
+            # instead of only via InfisicalEnvironmentPostProcessor's Java fallback constants.
+            - name: INFISICAL_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.infisical.secretName }}
+                  key: INFISICAL_CLIENT_ID
+            - name: INFISICAL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.infisical.secretName }}
+                  key: INFISICAL_CLIENT_SECRET
+            - name: INFISICAL_ENV
+              value: {{ .Values.infisical.env | quote }}
+            - name: INFISICAL_HOST
+              value: {{ .Values.infisical.host | quote }}
+            - name: INFISICAL_PROJECT_ID
+              value: {{ .Values.infisical.projectId | quote }}
+            {{- end }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
