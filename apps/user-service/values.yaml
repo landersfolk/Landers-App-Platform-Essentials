@@ -13,25 +13,25 @@ service:
 env:
   SPRING_PROFILES_ACTIVE: qa
 
-# dev cluster (k3d-landers-app): TOKEN auth with the shared root token,
-# matching every service's own application.yml default and
-# vault-seed-secrets.sh. QA/prod overrides this to authMethod: APPROLE +
-# secretName: user-service-vault-creds (see vault-production/setup-approle.sh).
+# Disabled 2026-08-07: Infisical migration verified healthy for all 9 services,
+# both local k3d and QA. Left in place (not deleted) purely for an easy rollback
+# if ever needed - matches every service's own application.yml default and
+# vault-seed-secrets.sh. QA/prod used authMethod: APPROLE + secretName:
+# user-service-vault-creds instead (see vault-production/setup-approle.sh).
 vault:
-  enabled: true
+  enabled: false
   host: vault-server
   port: "8200"
   scheme: http
   authMethod: TOKEN
   token: root
 
-# Infisical is replacing Vault (see commons-cloud's InfisicalEnvironmentPostProcessor).
-# Left additive alongside vault: above (harmless extra env vars for the still-running
-# Vault-based image) until user-service's own image is rebuilt from the migrated
-# source and vault.enabled can safely flip to false. secretName points at a
-# pre-created k8s Secret (kubectl create secret generic infisical-credentials
-# --from-literal=INFISICAL_CLIENT_ID=... --from-literal=INFISICAL_CLIENT_SECRET=...) -
-# never committed here. env=dev matches this project's actual configured slug.
+# Infisical replaced Vault (see commons-cloud's InfisicalEnvironmentPostProcessor) -
+# vault.enabled flipped to false above once every service was confirmed migrated
+# and healthy. secretName points at a pre-created k8s Secret (kubectl create secret
+# generic infisical-credentials --from-literal=INFISICAL_CLIENT_ID=...
+# --from-literal=INFISICAL_CLIENT_SECRET=...) - never committed here. env=dev
+# matches this project's actual configured slug.
 infisical:
   enabled: true
   env: dev
