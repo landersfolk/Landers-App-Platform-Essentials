@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "landers-app.name" . }}
+  labels:
+    {{- include "landers-app.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
@@ -10,7 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ include "landers-app.name" . }}
+        {{- include "landers-app.labels" . | nindent 8 }}
       {{- if .Values.prometheus.enabled }}
       annotations:
         prometheus.io/scrape: "true"
