@@ -2,7 +2,7 @@ nameOverride: notification-service
 
 image:
   repository: ghcr.io/landersfolk/notification-service
-  tag: "52ec880"
+  tag: "6a87351"
   pullPolicy: Always
 
 containerPort: 7078
