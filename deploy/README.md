@@ -64,10 +64,11 @@ secrets `04-setup-keycloak.sh` printed.
 
 ## Day-2: redeploying one service after a code change
 
-Unchanged from the original guide — this didn't need scripting, it was
-already 4 lines:
+Dockerfiles are now runtime-only (they just copy a pre-built `target/*.jar`
+in, no Maven inside the Docker build — see each service's Dockerfile), so
+the jar has to be built first:
 ```bash
-cd <service> && docker build --network=host --secret id=maven_settings,src=$HOME/.m2/settings.xml -t localhost:5000/<service>:<env> . && docker push localhost:5000/<service>:<env> && kubectl rollout restart deployment/<service>
+cd <service> && mvn -B clean package -DskipTests && docker build --network=host -t localhost:5000/<service>:<env> . && docker push localhost:5000/<service>:<env> && kubectl rollout restart deployment/<service>
 ```
 Or via Jenkins — see below.
 

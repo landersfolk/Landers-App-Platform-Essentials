@@ -39,10 +39,14 @@ for svc in $ORDERED_SERVICES; do
       --from-literal=secret_id="$secret_id"
   fi
 
+  # Dockerfile is now runtime-only (just copies target/*.jar in) -- the jar
+  # has to be built here first, mvn no longer runs inside the docker build.
+  log "[$svc] Building jar"
+  ( cd "${WORKDIR}/${svc}" && mvn -B clean package -DskipTests )
+
   log "[$svc] Building image (localhost:5000/${svc}:${IMAGE_TAG})"
   ( cd "${WORKDIR}/${svc}" && \
     docker build --network=host \
-      --secret id=maven_settings,src="${HOME}/.m2/settings.xml" \
       -t "localhost:5000/${svc}:${IMAGE_TAG}" . )
 
   log "[$svc] Pushing image"
