@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/landersfolk/Landers-App-Platform-Essentials.git
-    targetRevision: main
+    targetRevision: development
     path: charts/landers-app
     helm:
       valueFiles:

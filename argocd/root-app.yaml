@@ -11,7 +11,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/landersfolk/Landers-App-Platform-Essentials.git
-    targetRevision: main
+    targetRevision: development
     path: argocd/applications
     directory:
       recurse: false
