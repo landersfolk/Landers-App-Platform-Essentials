@@ -2,7 +2,7 @@ nameOverride: lander-web
 
 image:
   repository: ghcr.io/landersfolk/lander-web
-  tag: "40a7559"
+  tag: "1dd6660"
   pullPolicy: Always
 
 containerPort: 80
