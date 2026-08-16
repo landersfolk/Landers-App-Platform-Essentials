@@ -12,8 +12,8 @@ data:
         activate:
           on-profile: dev
       datasource:
-        url: jdbc:mysql://localhost:3306/landers-app-lander-db
-        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:postgresql://localhost:5432/landers-app-lander-db
+        driver-class-name: org.postgresql.Driver
         hikari:
           maximum-pool-size: 5
       data:
@@ -26,7 +26,7 @@ data:
         enabled: true
         locations: classpath:db/migration
         lock-retry-count: 10
-        url: jdbc:mysql://localhost:3306/landers-app-lander-db
+        url: jdbc:postgresql://localhost:5432/landers-app-lander-db
       jpa:
         hibernate:
           ddl-auto: none
@@ -34,7 +34,7 @@ data:
         properties:
           hibernate:
             format_sql: true
-            dialect: org.hibernate.dialect.MySQLDialect
+            dialect: org.hibernate.dialect.PostgreSQLDialect
             globally_quoted_identifiers: true
       jackson:
         serialization:
@@ -82,12 +82,19 @@ data:
       port: 7073
     media:
       upload:
+        provider: s3
         base-path: uploads/landlord
+        s3:
+          bucket: landers-assets-dev-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
 
     # External service URLs
     services:
       admin-service:
         url: http://localhost:7071
+      corporate-service:
+        url: http://localhost:7074
 
     ---
     # QA Profile
@@ -96,8 +103,8 @@ data:
         activate:
           on-profile: qa
       datasource:
-        url: jdbc:mysql://mysql-db:3306/landers-app-lander-db
-        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/landers-app-lander-db?sslmode=require
+        driver-class-name: org.postgresql.Driver
         hikari:
           maximum-pool-size: 10
           connection-timeout: 30000
@@ -111,14 +118,14 @@ data:
         enabled: true
         locations: classpath:db/migration
         lock-retry-count: 10
-        url: jdbc:mysql://mysql-db:3306/landers-app-lander-db
+        url: jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/landers-app-lander-db?sslmode=require
       jpa:
         hibernate:
           ddl-auto: none
         show-sql: false
         properties:
           hibernate:
-            dialect: org.hibernate.dialect.MySQLDialect
+            dialect: org.hibernate.dialect.PostgreSQLDialect
             globally_quoted_identifiers: true
       jackson:
         serialization:
@@ -147,12 +154,12 @@ data:
         oauth2:
           resourceserver:
             jwt:
-              issuer-uri: http://keycloak:8180/realms/landers-realm
-              jwk-set-uri: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/certs
+              issuer-uri: https://keycloak-qa.landersfolk.com/realms/landers-realm
+              jwk-set-uri: https://keycloak-qa.landersfolk.com/realms/landers-realm/protocol/openid-connect/certs
 
     keycloak:
       auth-server-url: http://keycloak:8180
-      tokenUrl: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/token
+      tokenUrl: https://keycloak-qa.landersfolk.com/realms/landers-realm/protocol/openid-connect/token
       grantType: password
       realm: landers-realm
 
@@ -166,12 +173,19 @@ data:
       port: 7073
     media:
       upload:
+        provider: s3
         base-path: uploads/landlord
+        s3:
+          bucket: landers-assets-qa-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
 
     # External service URLs
     services:
       admin-service:
         url: http://admin-service:7071
+      corporate-service:
+        url: http://corporate-service:7074
 
 
     ---
@@ -181,8 +195,8 @@ data:
         activate:
           on-profile: prod
       datasource:
-        url: jdbc:mysql://mysql-db-prod:3306/landers-app-lander-db
-        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
+        driver-class-name: org.postgresql.Driver
         hikari:
           maximum-pool-size: 20
           connection-timeout: 20000
@@ -199,14 +213,14 @@ data:
         enabled: true
         locations: classpath:db/migration
         lock-retry-count: 10
-        url: jdbc:mysql://mysql-db-prod:3306/landers-app-lander-db
+        url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
       jpa:
         hibernate:
           ddl-auto: none
         show-sql: false
         properties:
           hibernate:
-            dialect: org.hibernate.dialect.MySQLDialect
+            dialect: org.hibernate.dialect.PostgreSQLDialect
             globally_quoted_identifiers: true
       jackson:
         serialization:
@@ -259,4 +273,6 @@ data:
     # External service URLs
     services:
       admin-service:
-        url: http://admin-service:7071    
+        url: http://admin-service:7071
+      corporate-service:
+        url: http://corporate-service:7074

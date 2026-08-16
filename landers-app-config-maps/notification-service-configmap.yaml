@@ -12,15 +12,21 @@ data:
         activate:
           on-profile: dev
       datasource:
-        url: jdbc:mysql://localhost:3306/landers-app-lander-db
-        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:postgresql://localhost:5432/landers-app-lander-db
+        driver-class-name: org.postgresql.Driver
         hikari:
           maximum-pool-size: 5
+      data:
+        redis:
+          host: localhost
+          port: 6379
+      cache:
+        type: redis
       flyway:
         enabled: true
         locations: classpath:db/migration
         lock-retry-count: 10
-        url: jdbc:mysql://localhost:3306/landers-app-lander-db
+        url: jdbc:postgresql://localhost:5432/landers-app-lander-db
       jpa:
         hibernate:
           ddl-auto: none
@@ -28,7 +34,7 @@ data:
         properties:
           hibernate:
             format_sql: true
-            dialect: org.hibernate.dialect.MySQLDialect
+            dialect: org.hibernate.dialect.PostgreSQLDialect
             globally_quoted_identifiers: true
       jackson:
         serialization:
@@ -86,23 +92,29 @@ data:
         activate:
           on-profile: qa
       datasource:
-        url: jdbc:mysql://mysql-db:3306/landers-app-lander-db
-        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/landers-app-lander-db?sslmode=require
+        driver-class-name: org.postgresql.Driver
         hikari:
           maximum-pool-size: 10
           connection-timeout: 30000
+      data:
+        redis:
+          host: redis-db
+          port: 6379
+      cache:
+        type: redis
       flyway:
         enabled: true
         locations: classpath:db/migration
         lock-retry-count: 10
-        url: jdbc:mysql://mysql-db:3306/landers-app-lander-db
+        url: jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/landers-app-lander-db?sslmode=require
       jpa:
         hibernate:
           ddl-auto: none
         show-sql: false
         properties:
           hibernate:
-            dialect: org.hibernate.dialect.MySQLDialect
+            dialect: org.hibernate.dialect.PostgreSQLDialect
             globally_quoted_identifiers: true
       jackson:
         serialization:
@@ -134,12 +146,12 @@ data:
         oauth2:
           resourceserver:
             jwt:
-              issuer-uri: http://keycloak:8180/realms/landers-realm
-              jwk-set-uri: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/certs
+              issuer-uri: https://keycloak-qa.landersfolk.com/realms/landers-realm
+              jwk-set-uri: https://keycloak-qa.landersfolk.com/realms/landers-realm/protocol/openid-connect/certs
 
     keycloak:
       auth-server-url: http://keycloak:8180
-      tokenUrl: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/token
+      tokenUrl: https://keycloak-qa.landersfolk.com/realms/landers-realm/protocol/openid-connect/token
       grantType: password
       realm: landers-realm
 
@@ -162,26 +174,32 @@ data:
         activate:
           on-profile: prod
       datasource:
-        url: jdbc:mysql://mysql-db-prod:3306/landers-app-lander-db
-        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
+        driver-class-name: org.postgresql.Driver
         hikari:
           maximum-pool-size: 20
           connection-timeout: 20000
           minimum-idle: 10
           idle-timeout: 600000
           max-lifetime: 1800000
+      data:
+        redis:
+          host: redis-db-prod
+          port: 6379
+      cache:
+        type: redis
       flyway:
         enabled: true
         locations: classpath:db/migration
         lock-retry-count: 10
-        url: jdbc:mysql://mysql-db-prod:3306/landers-app-lander-db
+        url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
       jpa:
         hibernate:
           ddl-auto: none
         show-sql: false
         properties:
           hibernate:
-            dialect: org.hibernate.dialect.MySQLDialect
+            dialect: org.hibernate.dialect.PostgreSQLDialect
             globally_quoted_identifiers: true
       jackson:
         serialization:
