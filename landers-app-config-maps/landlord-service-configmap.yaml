@@ -46,6 +46,8 @@ data:
         topics:
           userRegistrationLandlord: user-registration-landlord
           userRegistrationLandlordDlt: user-registration-landlord-dlt
+          landApproved: land-approved
+          landApprovedDlt: land-approved-dlt
         producer:
           acks: all
           retries: 3
@@ -128,6 +130,8 @@ data:
         topics:
           userRegistrationLandlord: user-registration-landlord
           userRegistrationLandlordDlt: user-registration-landlord-dlt
+          landApproved: land-approved
+          landApprovedDlt: land-approved-dlt
         producer:
           acks: all
           retries: 3
@@ -214,6 +218,8 @@ data:
         topics:
           userRegistrationLandlord: user-registration-landlord
           userRegistrationLandlordDlt: user-registration-landlord-dlt
+          landApproved: land-approved
+          landApprovedDlt: land-approved-dlt
         producer:
           acks: all
           retries: 5

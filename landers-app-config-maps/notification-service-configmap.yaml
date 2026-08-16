@@ -40,6 +40,7 @@ data:
         topics:
           bookingStatusChanged: booking-status-changed
           announcementCreated: announcement-created
+          landApproved: land-approved
         producer:
           acks: all
           retries: 3
@@ -117,6 +118,7 @@ data:
         topics:
           bookingStatusChanged: booking-status-changed
           announcementCreated: announcement-created
+          landApproved: land-approved
         producer:
           acks: all
           retries: 3
@@ -195,6 +197,7 @@ data:
         topics:
           bookingStatusChanged: booking-status-changed
           announcementCreated: announcement-created
+          landApproved: land-approved
         producer:
           acks: all
           retries: 5
