@@ -2,7 +2,7 @@ nameOverride: booking-service
 
 image:
   repository: ghcr.io/landersfolk/booking-service
-  tag: "de35060"
+  tag: "54a4c75"
   pullPolicy: Always
 
 containerPort: 7076
