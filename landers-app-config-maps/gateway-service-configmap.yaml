@@ -125,6 +125,8 @@ data:
         url: http://localhost:7073
       corporate-service:
         url: http://localhost:7074
+      notification-service:
+        url: http://localhost:7078
 
     server:
       port: 7070
@@ -240,6 +242,8 @@ data:
         url: http://landlord-service:7073
       corporate-service:
         url: http://corporate-service:7074
+      notification-service:
+        url: http://notification-service:7078
 
     server:
       port: 7070
@@ -353,6 +357,8 @@ data:
         url: http://landlord-service:7073
       corporate-service:
         url: http://corporate-service:7074
+      notification-service:
+        url: http://notification-service:7078
 
 
     server:
