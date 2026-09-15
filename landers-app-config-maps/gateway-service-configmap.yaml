@@ -101,7 +101,10 @@ data:
                 - id: notification-service
                   uri: http://localhost:7078
                   predicates:
-                    - Path=/api/v1/notifications/**
+                    # otp-service functionality lives inside notification-service (see
+                    # notification-service's io.landers.notification.otp package) — routed here,
+                    # not a separate service.
+                    - Path=/api/v1/notifications/**,/api/v1/otp/**
 
     management:
       health:
@@ -214,7 +217,9 @@ data:
                 - id: notification-service
                   uri: lb://notification-service
                   predicates:
-                    - Path=/api/v1/notifications/**
+                    # otp-service functionality lives inside notification-service — routed here,
+                    # not a separate service.
+                    - Path=/api/v1/notifications/**,/api/v1/otp/**
 
     management:
       health:
@@ -318,6 +323,15 @@ data:
                   uri: lb://landlord-service
                   predicates:
                     - Path=/qr/spot/**
+                # notification-service had no prod route at all before this — added because the
+                # new OTP feature (otp-service functionality living inside notification-service)
+                # needs to work in production; the notification inbox/push-token endpoints were
+                # silently unreachable in prod before this too. Not touching the equally-missing
+                # payment-service route here — unrelated to this change.
+                - id: notification-service
+                  uri: lb://notification-service
+                  predicates:
+                    - Path=/api/v1/notifications/**,/api/v1/otp/**
 
 
     management:
