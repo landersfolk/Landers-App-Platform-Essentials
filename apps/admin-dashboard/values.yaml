@@ -2,7 +2,7 @@ nameOverride: admin-dashboard
 
 image:
   repository: ghcr.io/landersfolk/admin-dashboard
-  tag: "be79d40-qa"
+  tag: "c5b87ba-qa"
   pullPolicy: Always
 
 containerPort: 80
