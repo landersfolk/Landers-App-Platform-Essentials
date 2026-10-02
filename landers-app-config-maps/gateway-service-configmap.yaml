@@ -90,6 +90,10 @@ data:
                   uri: http://localhost:7076
                   predicates:
                     - Path=/qr/checkin/**
+                - id: well-known-public
+                  uri: http://localhost:7076
+                  predicates:
+                    - Path=/.well-known/**
                 - id: landlord-qr-public
                   uri: http://localhost:7073
                   predicates:
@@ -208,6 +212,10 @@ data:
                   uri: lb://booking-service
                   predicates:
                     - Path=/qr/checkin/**
+                - id: well-known-public
+                  uri: lb://booking-service
+                  predicates:
+                    - Path=/.well-known/**
                 - id: landlord-qr-public
                   uri: lb://landlord-service
                   predicates:
@@ -323,6 +331,10 @@ data:
                   uri: lb://booking-service
                   predicates:
                     - Path=/qr/checkin/**
+                - id: well-known-public
+                  uri: lb://booking-service
+                  predicates:
+                    - Path=/.well-known/**
                 - id: landlord-qr-public
                   uri: lb://landlord-service
                   predicates:

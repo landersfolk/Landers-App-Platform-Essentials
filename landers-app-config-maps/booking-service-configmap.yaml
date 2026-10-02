@@ -200,6 +200,10 @@ data:
 
     ---
     # PROD Profile
+    # Host encoded into booking QR codes (BookingQrCodeService) - the production API host, so the QR
+    # link opens the app via App Links / Universal Links for api.landersfolk.com.
+    app:
+      public-base-url: https://api.landersfolk.com
     spring:
       config:
         activate:
