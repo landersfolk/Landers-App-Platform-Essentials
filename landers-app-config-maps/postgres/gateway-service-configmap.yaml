@@ -23,6 +23,8 @@ data:
         provider: landers-provider
         admin: landers-admin-dashboard
         require-header: false
+        # Mandatory app_id only on login, registration and password reset. Enable once new app builds are out.
+        require-header-on-auth: false
 
     jwt:
       auth:
