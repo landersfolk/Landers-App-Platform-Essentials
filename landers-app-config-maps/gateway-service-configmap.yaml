@@ -14,6 +14,16 @@ data:
             name: gateway-service-config
             include-profile-specific-sources: false
 
+    # Client-app identifiers sent by the mobile apps in the `app_id` header (see gateway AppIdFilter).
+    # Changing a value here means shipping a new build of that app. Keep require-header=false until
+    # every client (old app builds, admin dashboard) sends the header; flip to true afterwards.
+    landers:
+      app-id:
+        requester: landers-requester
+        provider: landers-provider
+        admin: landers-admin-dashboard
+        require-header: false
+
     jwt:
       auth:
         converter:
