@@ -125,6 +125,8 @@ data:
         url: http://localhost:7073
       corporate-service:
         url: http://localhost:7074
+      admin-service:
+        url: http://localhost:7071
 
     server:
       port: 7070
@@ -229,6 +231,8 @@ data:
         url: http://landlord-service:7073
       corporate-service:
         url: http://corporate-service:7074
+      admin-service:
+        url: http://admin-service:7071
 
     server:
       port: 7070
@@ -332,6 +336,8 @@ data:
         url: http://landlord-service:7073
       corporate-service:
         url: http://corporate-service:7074
+      admin-service:
+        url: http://admin-service:7071
 
 
     server:
