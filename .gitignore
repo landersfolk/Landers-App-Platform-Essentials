@@ -1,0 +1,4 @@
+
+# Local load-test credentials (QA-only account) - never commit
+load-tests/.env.local
+load-tests/*.local

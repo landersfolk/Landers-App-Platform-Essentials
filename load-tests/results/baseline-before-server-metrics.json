@@ -1,0 +1,155 @@
+{
+  "label": "baseline-before",
+  "prometheus": {
+    "cpu_avg": {
+      "admin-service": 0.009,
+      "booking-service": 0.015,
+      "corporate-service": 0.009,
+      "gateway-service": 0.637,
+      "landlord-service": 0.181,
+      "notification-service": 0.015,
+      "payment-service": 0.012,
+      "requester-service": 0.036,
+      "user-service": 0.195
+    },
+    "cpu_max": {
+      "admin-service": 0.011,
+      "booking-service": 0.029,
+      "corporate-service": 0.014,
+      "gateway-service": 0.934,
+      "landlord-service": 0.321,
+      "notification-service": 0.044,
+      "payment-service": 0.023,
+      "requester-service": 0.152,
+      "user-service": 0.422
+    },
+    "gc_pause_seconds": {
+      "admin-service": 0.008,
+      "booking-service": 0.035,
+      "corporate-service": 0.015,
+      "gateway-service": 1.294,
+      "landlord-service": 0.68,
+      "notification-service": 0.035,
+      "payment-service": 0.027,
+      "requester-service": 0.073,
+      "user-service": 1.08
+    },
+    "heap_used_max_mb": {
+      "admin-service": 88.994,
+      "booking-service": 77.724,
+      "corporate-service": 94.438,
+      "gateway-service": 65.325,
+      "landlord-service": 84.266,
+      "notification-service": 65.856,
+      "payment-service": 66.977,
+      "requester-service": 83.746,
+      "user-service": 83.777
+    },
+    "hikari_acquire_avg_ms": {
+      "admin-service": 0.325,
+      "booking-service": 0.213,
+      "corporate-service": 0.391,
+      "landlord-service": 0.327,
+      "notification-service": 0.21,
+      "payment-service": 0.123,
+      "requester-service": 0.261,
+      "user-service": 0.007
+    },
+    "hikari_active_max": {
+      "admin-service": 0.0,
+      "booking-service": 0.0,
+      "corporate-service": 0.0,
+      "landlord-service": 6.0,
+      "notification-service": 0.0,
+      "payment-service": 0.0,
+      "requester-service": 0.0,
+      "user-service": 6.0
+    },
+    "hikari_pending_max": {
+      "admin-service": 0.0,
+      "booking-service": 0.0,
+      "corporate-service": 0.0,
+      "landlord-service": 0.0,
+      "notification-service": 0.0,
+      "payment-service": 0.0,
+      "requester-service": 0.0,
+      "user-service": 0.0
+    },
+    "hikari_pool_max": {
+      "admin-service": 10.0,
+      "booking-service": 10.0,
+      "corporate-service": 10.0,
+      "landlord-service": 10.0,
+      "notification-service": 10.0,
+      "payment-service": 10.0,
+      "requester-service": 10.0,
+      "user-service": 10.0
+    },
+    "hikari_timeouts": {
+      "admin-service": 0.0,
+      "booking-service": 0.0,
+      "corporate-service": 0.0,
+      "landlord-service": 0.0,
+      "notification-service": 0.0,
+      "payment-service": 0.0,
+      "requester-service": 0.0,
+      "user-service": 0.0
+    },
+    "http_5xx": {
+      "booking-service": 0.0,
+      "gateway-service": 0.0,
+      "landlord-service": 0.0
+    },
+    "http_avg_latency_ms": {
+      "admin-service": 2.914,
+      "booking-service": 4.403,
+      "corporate-service": 3.289,
+      "gateway-service": 30.038,
+      "landlord-service": 14.122,
+      "notification-service": 6.615,
+      "payment-service": 3.085,
+      "requester-service": 2.694,
+      "user-service": 3.337
+    },
+    "http_req_per_s": {
+      "admin-service": 0.271,
+      "booking-service": 0.267,
+      "corporate-service": 0.267,
+      "gateway-service": 49.303,
+      "landlord-service": 39.347,
+      "notification-service": 0.264,
+      "payment-service": 0.264,
+      "requester-service": 10.032,
+      "user-service": 146.747
+    },
+    "jvm_threads_max": {
+      "admin-service": 46.0,
+      "booking-service": 43.0,
+      "corporate-service": 48.0,
+      "gateway-service": 40.0,
+      "landlord-service": 66.0,
+      "notification-service": 59.0,
+      "payment-service": 45.0,
+      "requester-service": 49.0,
+      "user-service": 55.0
+    },
+    "tomcat_busy_max": {}
+  },
+  "rds": {
+    "CPUCreditBalance": {
+      "Minimum": 575.86
+    },
+    "CPUUtilization": {
+      "Average": 25.62,
+      "Maximum": 25.62
+    },
+    "DatabaseConnections": {
+      "Average": 81.0,
+      "Maximum": 81.0
+    }
+  },
+  "window": [
+    "2026-10-10T21:59:56Z",
+    "2026-10-10T22:07:20Z"
+  ]
+}
