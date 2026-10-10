@@ -99,6 +99,12 @@ resources:
 probes:
   enabled: true
   path: /actuator/health
+  # Optional separate paths. Empty = use `path` for that probe (what every service did so far).
+  # Backend services set livenessPath: /actuator/health/liveness (app state only - never DB/Redis/Kafka,
+  # so a dependency blip or a CPU-saturated health call cannot restart the pod) and
+  # readinessPath: /actuator/health/readiness (app state + DB). The startupProbe keeps `path`.
+  livenessPath: ""
+  readinessPath: ""
   periodSeconds: 10
   timeoutSeconds: 3
   failureThreshold: 3
@@ -108,7 +114,10 @@ probes:
 # Graceful shutdown window (SIGTERM -> SIGKILL). Spring Boot's own graceful
 # shutdown (server.shutdown=graceful, already the framework default) needs
 # real time to drain in-flight requests before the process gets killed.
-terminationGracePeriodSeconds: 30
+# 45s = Spring's graceful-shutdown drain (spring.lifecycle.timeout-per-shutdown-phase, default 30s)
+# plus margin. With exactly 30s the SIGKILL could land at the same moment the drain finishes and cut
+# in-flight requests during a rollout or HPA scale-down. Pods still exit as soon as they are drained.
+terminationGracePeriodSeconds: 45
 
 # Empty by default — set per-service (e.g. to a "critical-infra" PriorityClass)
 # for anything the rest of the platform can't function without. None of the
