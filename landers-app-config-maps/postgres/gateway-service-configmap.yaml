@@ -13,6 +13,22 @@ data:
             enabled: true
             name: gateway-service-config
             include-profile-specific-sources: false
+        # Outbound (gateway -> service) HTTP client tuning, all profiles. Defaults are NO connect
+        # timeout and an unbounded idle time on pooled connections:
+        #  - connect-timeout: fail fast (502) when a pod is unreachable instead of hanging a request
+        #    for the OS connect timeout.
+        #  - pool.max-idle-time: shorter than the services' Tomcat keep-alive (20s), so the gateway
+        #    never reuses a pooled connection the upstream has already closed (the usual source of
+        #    sporadic "Connection reset by peer"/502 on the first request after a quiet moment).
+        # Deliberately NOT set: response-timeout (would cut SSE streams) and a pool max-connections
+        # (long-lived SSE connections count toward it) - see PERFORMANCE_AUDIT.md.
+        gateway:
+          server:
+            webflux:
+              httpclient:
+                connect-timeout: 5000
+                pool:
+                  max-idle-time: 15s
 
     # Client-app identifiers sent by the mobile apps in the `app_id` header (see gateway AppIdFilter).
     # Changing a value here means shipping a new build of that app. Keep require-header=false until
