@@ -38,7 +38,7 @@ Status: **APPLIED** = done on a branch, config-only. **APPROVAL** = needs your O
 - Change: `spring.threads.virtual.enabled=true` (+ the limit above) in each MVC ConfigMap. Roll out booking-service first.
 
 **F3. Downstream HTTP calls have no timeouts (booking, payment, landlord, requester, corporate). APPROVAL**
-- `WebClient.builder().build()` = no response timeout; Reactor Netty's connect timeout is 30 s; `.block()` has no timeout. A hung downstream pins a Tomcat thread (and a DB connection, see F1) indefinitely. Only the gateway sets a (5 s) response timeout.
+- `WebClient.builder().build()` = the JDK HttpClient: no connect timeout, no response timeout; `.block()` has no timeout. A hung downstream pins a Tomcat thread (and a DB connection, see F1) indefinitely. Only the gateway sets a (5 s) response timeout.
 - Fix: per-service `WebClientConfig`: connect 5 s, response ~30 s (payments/settlement may need more), and `.block(Duration)` on the hot paths. It is code, and a slow-but-successful call would start failing, so it needs your decision on the numbers.
 
 **F4. SSE streams poll the database per client (landlord-service). APPROVAL**
@@ -47,7 +47,7 @@ Status: **APPLIED** = done on a branch, config-only. **APPROVAL** = needs your O
 
 **F5. Autoscaling vs. scheduled jobs. RESOLVED - corrected on 2026-10-11 (no action needed).**
 - The first version of this finding was wrong: I counted text matches of `@Scheduled`/`@SchedulerLock` (which included comments). Counting actual annotated methods: **booking-service 8 of 8 jobs are locked, payment-service 2 of 2, landlord-service 1 of 1.** Only notification-service has no locking (3 jobs, no ShedLock dependency), and its jobs are idempotent single SQL statements (`bulkExpirePending`, `deleteByCreatedAtBefore`, and a no-op), so running them on every replica is harmless duplicate work. Locking them would need the ShedLock dependency added to that service and is not required for correctness.
-- Left as-is, worth a look (not a scale-out problem): `StaleSessionCompletionScheduler` and `OverstayRolloverScheduler` (booking-service) use the **same lock name** `booking-overstayAndRolloverSweep` with `lockAtLeastFor=10s`. Because both start on the same 60 s tick, one of them can lose the lock on every tick and effectively never run. I found no log lines for `StaleSessionCompletion` in the last 24 h on QA, which is consistent with that but not proof (it only logs when it finds a session). Changing the name would start a job that may have been inactive, so it needs your decision.
+- See section 12.2: the shared lock name between `StaleSessionCompletionScheduler` and `OverstayRolloverScheduler` is **deliberate** (my first reading, a copy-paste slip, was wrong); the open question is whether it starves one of them.
 - Therefore HPA on booking-service/landlord-service is not blocked by scheduling. It is still not applied (capacity/DB-connection decision, see F10/F11).
 
 ### Tier 2 - medium impact
@@ -200,3 +200,95 @@ Per service `WebClientConfig`: build the `WebClient` on a Reactor Netty `HttpCli
 
 ### Item 4 - SSE availability streams polling the DB (F4)
 - Not covered by the baseline (it opened no streams). Plan: (1) add a k6 scenario that opens N concurrent `nearby/available/stream` and `by-city/stream` connections for a few minutes with the existing read-only account and measure `hikaricp_connections_active`, landlord-service CPU and query rate at N = 10 / 50 / 100; (2) based on that, choose between: a server-side minimum poll interval (config/small code), one shared poll per distinct query key with fan-out (code, medium), or a short-TTL cache of the geo query (code, small). Nothing is changed until the measurement exists.
+
+## 10. Items 1 and 2 - booking-service transactions, connections and open-in-view: ANALYSIS ONLY (no code changed)
+
+### 10.1 What `open-in-view` does today
+`spring.jpa.open-in-view` is the Spring default (`true`, no override). For every web request an `EntityManager` stays open until the response is written; if the request reads from the DB **outside** a transaction, the JDBC connection it acquired stays checked out until then. Inside an `@Transactional` method the connection is held for the whole transaction, with or without open-in-view. So there are two separate problems; turning open-in-view off fixes only the first:
+
+| # | Problem | Fixed by `open-in-view=false`? |
+|---|---|---|
+| A | Non-transactional read, then slow work (remote calls, JSON mapping) in the same request keeps the connection | **yes** |
+| B | `@Transactional` method that makes a remote call keeps the connection for the duration of the call | **no** - needs the method restructured |
+
+### 10.2 Remote calls made inside a transaction (problem B) - booking-service
+Static scan of `booking-service` (method level, following same-class calls): **130 `@Transactional` methods, of which 100 reach a remote call** (`WebClient` `.block()`, or a helper that calls other services: `SpotOwnerResolver` -> landlord/corporate, `PlatformFeeRateResolver` -> requester/landlord/corporate, `BookingActorGuard` -> corporate permissions).
+| Class | tx methods | of which reach a remote call |
+|---|---|---|
+| LandLordBookingService / CorporateBookingService | 18 / 18 | 15 / 15 |
+| LandLordLandingService / CorporateLandingService | 18 / 18 | 16 / 16 |
+| LandLordQuickStopService / CorporateQuickStopService | 18 / 18 | 16 / 16 |
+| BookingRolloverService, OverstayRolloverScheduler, NoShowScheduler, BookingReminderScheduler, CorporateRevenueService | 2, 1, 1, 1, 1 | all |
+Representative flows in `LandLordBookingService` (the others mirror it): `createBooking` (landlord-service, requester-service, fee rates), `acceptBooking`/`rejectBooking`/`cancelBooking` (landlord-service, **payment-service**), `payBooking` (**payment-service** escrow hold), `checkIn` / `checkOut` / `confirmPayment` / `confirmCashReceived` (landlord-service, **payment-service**, fee rates, corporate permissions). In each, the DB connection is checked out while those calls run, which is exactly why a slow or unreachable downstream exhausts the 10-connection pool.
+Schedulers are not web requests, so open-in-view does not apply to them, but the same transaction-holds-connection rule does.
+
+### 10.3 Non-transactional reads that call other services (problem A) - the feed endpoints
+`getMyBookingsFeed`, `getOwnedBookingsFeed`, `getBookingsByStatus` (and the same trio for landings, quick stops and the corporate variants) read a page from the DB, then `toKeysetPage` -> `enrichFloorLabels` and `enrichRequesterNames` call landlord-service / requester-service **one blocking call per distinct requester and per distinct floor spot, sequentially**. A page defaults to 5 rows (max 100), so a landlord's busy feed can mean up to 100 sequential remote calls with the connection and the Tomcat thread held. These are the hottest read endpoints of the Business app. Two separate improvements: batch the lookups (one bulk call instead of N; `admin-service` already has `/bulk` lookups as a model) and run them in parallel - both code changes, independent of open-in-view.
+
+### 10.4 Lazy loading that depends on open-in-view
+Much narrower than feared: booking-service has **no `@ManyToOne` / `@OneToMany` at all** (the entities reference other services by id). The **only lazy association is `@ElementCollection List<LandLandingVehicle> vehicleIds`** on `LandLordLanding`, `CorporateLanding`, `LandLordQuickStop`, `CorporateQuickStop`. It is read by the four MapStruct mappers (`extractPrimaryVehicleId`). Every service method that maps one of these entities to a DTO **without being `@Transactional`** would throw `LazyInitializationException` once open-in-view is off:
+| Service | non-transactional methods that map a landing / quick-stop entity |
+|---|---|
+| LandLordLandingService | getLandingById, getLandingsByUser, getMyLandingsFeed, getLandingsByLandSpot, getLandingsByStatus, getOwnedLandingsFeed (+ doReject) |
+| CorporateLandingService | the same set without the "my feed" |
+| LandLordQuickStopService / CorporateQuickStopService | the equivalent set |
+= **26 methods** (the 4 `doReject` are probably only reached from transactional callers - verify). Standard bookings (`LandLordBooking`, `CorporateBooking`) have no lazy association, so they are not affected.
+
+### 10.5 Risk of turning it off, and the smallest safe change
+- Risk: 500s on the ~22 landing / quick-stop read endpoints the first time they map a row with `vehicleIds`; nothing else in this service depends on the open session.
+- Smallest change that keeps behavior: (1) mark those 26 methods `@Transactional(readOnly = true)` (or give the finders an `@EntityGraph(attributePaths = "vehicleIds")` / make the collection eager - it is a tiny list), (2) set `spring.jpa.open-in-view=false`. Keep the 100 transactional+remote methods as they are in this step; restructuring them (prepare in a transaction -> call without a connection -> commit in a second transaction) changes failure semantics (today a failed remote call rolls back the DB writes) and should be a separate decision, flow by flow, starting with `payBooking`/`checkOut`.
+- Expected benefit of step (1)+(2) alone: removes problem A (feeds) only; problem B (the payment/landlord calls inside transactions) is untouched. Be careful not to oversell it.
+
+### 10.6 Tests that would cover it (Docker is available here, `testcontainers` is already a booking-service test dependency; existing tests: 7, none touch this)
+1. `OpenInViewDisabledMappingIT` (Postgres container, `spring.jpa.open-in-view=false`): create a landing / quick stop per service with 2 vehicles, call each of the 26 read methods from a non-transactional thread, assert no `LazyInitializationException` and `vehicleId` populated. **Fails today for the unannotated methods, green after the change** - this is the regression net.
+2. `ConnectionNotHeldDuringRemoteCallIT`: stub the payment client with a latch; start `payBooking` / `checkOut` / `createBooking` on a thread; read `HikariPoolMXBean.getActiveConnections()` while blocked. Documents problem B per flow (1 active today); becomes 0 only after the restructure.
+3. `PoolExhaustionIT`: pool size 2, 6 concurrent `payBooking` with a slow stubbed payment client; assert how many complete within the pool timeout - the before/after proof for any restructure.
+4. For the feeds: a test that counts remote calls per page (expect 1 bulk call, today N).
+
+### 10.7 Could a more realistic load test show the pool problem?
+Yes, but not by volume alone: at the baseline's rates a booking call holds a connection for ~10-50 ms, so exhausting 10 connections needs hundreds of booking operations per second. The pool problem appears when **a downstream is slow or down**. What it needs:
+- **Data:** seed realistic lands/spots on QA (e.g. 200 lands x 10 spots across 3-4 cities) with a test landlord via the API (+ admin approval), or a QA-only SQL seed. Today QA has 2 lands near Cairo.
+- **Accounts:** ~50 requester accounts with funded wallets and a few landlord/corporate accounts to accept (accounts need OTP registration, so a one-off provisioning step by you); all with **no device tokens**, so no real push is sent.
+- **Scenario (QA only, wallet payment = internal, no real money; card/Paymob stays out):** create booking -> owner accepts -> `payBooking` (escrow hold) -> arrive -> check-in -> check-out, one spot per virtual user so spot state does not collide; plus the read-only browse mix. Clean-up script afterwards (cancel/delete the test bookings, restore wallets).
+- **The experiment that exposes the pool:** run the scenario at ~5 flows/s while payment-service is made slow or unavailable (scale it to 0 for 2 minutes, or inject latency) - with the new 3 s connect timeout each blocked call now holds a connection for 3 s, so ~4 concurrent flows already saturate a pool of 10; before the timeouts it would hang until the OS gives up. Needs your explicit go-ahead because it deliberately degrades QA.
+- **Observe:** `hikaricp_connections_active/pending/timeout_total` and `tomcat_threads_busy` on booking-service, p95 of the booking endpoints, 5xx.
+
+## 11. UserStatusFilter - why user-service receives ~3x the gateway's rate: ANALYSIS + PROPOSAL (no code changed)
+
+### 11.1 Cause (reproduced)
+`UserStatusFilter` calls `GET user-service /api/v1/users/auth/status/{userId}` on every authenticated request, uncached. It is amplified two ways:
+1. It is registered **twice**: it is a `@Component implements WebFilter` (WebFlux adds every such bean to the main filter chain) **and** `SecurityConfig` adds the same instance with `addFilterAfter(userStatusFilter, AUTHENTICATION)`. Each request passes it twice.
+2. Inside the filter, `.flatMap(... chain.filter(exchange))` yields a `Mono<Void>`, which is **empty on completion**, so the trailing `.switchIfEmpty(chain.filter(exchange))` fires and **re-runs the rest of the chain** a second time per registration. (The gateway's `NettyRoutingFilter` skips re-routing an already-routed exchange, which is why the backends still see each request once - the landlord-service request rate equals the k6 iteration rate.)
+Reproduced with a throwaway harness wiring the real filter the way the gateway does: **2 registrations -> 3 user-service calls (and 4 passes through the downstream handler) per request; 1 registration -> 1 call (2 passes)**. Measured on QA: 147 status calls/s for 49 requests/s = 2.9x. The harness was not committed.
+
+### 11.2 Proposal, in two steps
+**Step A - remove the amplification, no behavior change.** (a) Register the filter once (drop `addFilterAfter` or make the bean not a global `WebFilter`; the status check needs the authenticated context, so keep the security-chain registration and remove the `@Component` auto-registration). (b) Replace the `flatMap(...).switchIfEmpty(chain.filter)` shape with `...map(a -> true).defaultIfEmpty(false).flatMap(authenticated -> authenticated ? check(...) : chain.filter(exchange))` so the chain runs exactly once. Result: 3 calls -> 1 per request (-67% load on user-service), the redundant chain re-runs disappear (likely a visible share of the gateway's CPU), semantics identical (same status check, same fail-open rules). Add the harness as a permanent regression test. Risk: low.
+**Step B - cache the answer (behavior change, your decision).** In-memory per gateway pod, key = business user id, bounded (e.g. 10,000 entries), no new dependency (a `ConcurrentHashMap` with expiry, or Reactor `Mono.cache(ttl)` per key).
+| Choice | Effect on a blocked/suspended user | Load reduction on user-service |
+|---|---|---|
+| cache only `ACTIVE`, TTL 5 s | keeps working for up to 5 s after being blocked (per gateway pod) | calls per user capped at 1 per 5 s: at 50 req/s from one user 250x fewer; for a typical user (a few requests per minute) mostly 1 call per screen burst |
+| TTL 15 s | up to 15 s | more |
+| TTL 60 s | up to 60 s (too long for a safety control, in my view) | most |
+| non-ACTIVE results never cached | a blocked user is re-checked on every request (blocked stays blocked immediately); an **un**blocked user is let through at once | unchanged for blocked users, who are rare |
+| + event-based eviction | user-service already publishes to Kafka; a `user-status-changed` event evicts the entry on every gateway pod -> effectively **0 s staleness** with a long TTL | needs code in user-service and the gateway (Kafka consumer) |
+Fail-open on user-service errors stays as it is. Recommendation: Step A now; then Step B with "ACTIVE only, 10 s TTL, non-ACTIVE never cached" and measure; add event-based eviction only if the security team wants zero staleness. With HPA the gateway runs 1-3 pods, so "up to TTL" applies per pod and a status change is felt within TTL everywhere.
+
+## 12. Findings for the team
+
+### 12.1 No payment endpoint de-duplicates by booking - proposed idempotency-key design
+**Finding.** `WalletService.settleBooking`, `holdBookingPayment`, `settleSplitBooking`, `releaseBookingEscrow` (and the fee endpoints behind `collect-cash-fee`, `online-fee`, `timer-start-fee`, `refund-cancellation`) apply the movement every time they are called; there is no existing-transaction check by booking id, no unique constraint and no idempotency key. The callers (booking-service) treat "no response" as "not charged" and some deliberately retry later (`settle` returns null and `amountPaidSoFar` is not advanced "so the delta can be retried"). So any repeated delivery - a client timeout after the commit, a Feign retry (fixed for non-GET in 2b), a double tap that slips past the row lock, a restarted caller - can charge or credit twice.
+**Design.**
+1. *Contract:* each money-moving endpoint accepts an `Idempotency-Key` header (a UUID or a deterministic string, <= 80 chars). Missing header = today's behavior (so rollout is backward compatible).
+2. *Storage (needs a Flyway migration - a schema change, hence approval):* table `payment_idempotency(key text primary key, operation text, request_hash text, status text -- IN_PROGRESS|COMPLETED, response_json jsonb, wallet_owner_type text, created_at timestamptz, completed_at timestamptz)`; index on `created_at` for the sweep.
+3. *Flow inside the payment-service transaction, before touching any wallet:* `INSERT` the key. On a unique-violation, read the stored row: `COMPLETED` and same `request_hash` -> return the **stored response unchanged** (no second movement); `IN_PROGRESS` -> 409 (the first attempt is still running; the caller retries after a short delay); same key but different hash -> 422. After the wallet changes, store the response and mark `COMPLETED` in the **same transaction** as the movement, so a crash leaves neither or both (atomic).
+4. *Key derivation in booking-service (deterministic, so a retry reuses it):* `hold:{bookingId}`; `release:{bookingId}:{reason}`; `refund:{bookingId}:{kind}`; `settle:{bookingKind}:{bookingId}:{amountPaidSoFarBefore}` (the delta being settled makes each overstay increment unique); `fee:{operation}:{bookingKind}:{bookingId}`. The caller never invents a random key per attempt.
+5. *Then* payment calls can safely get a response timeout and automatic retry with the same key (the exact thing section 8.3 had to forbid today); a timeout becomes "unknown - retry with the same key".
+6. *Housekeeping:* delete keys older than 30 days from a ShedLock-protected job. Keep the Paymob webhook as is (it already keys on the order).
+**Rollout:** (1) payment-service accepts the optional header + migration; (2) booking-service sends keys; (3) enable response timeouts + retry for payment calls; (4) later, optionally require the header.
+**Tests:** duplicate request returns the first response and moves money once; two concurrent duplicates -> one executes, the other 409 then the same response; same key + different payload -> 422; crash between insert and commit leaves nothing; every caller's key derivation is stable across retries.
+**Risks:** a wrongly derived key either blocks a legitimate second operation (too coarse) or fails to protect (too fine); table growth (sweep); 409 handling in callers. Effort: roughly 3-5 days incl. tests across two services.
+
+### 12.2 booking-service: two scheduled jobs share one lock name (deliberate) - possible starvation
+**Finding.** `OverstayRolloverScheduler.overstayAndRolloverSweep` and `StaleSessionCompletionScheduler.completeStaleSessions` both use `@SchedulerLock(name = "booking-overstayAndRolloverSweep", lockAtMostFor = "PT2M", lockAtLeastFor = "PT10S")`. This is **intentional** (commit `3918c24`, 2026-10-03: "so the two jobs never process the same booking"; the code comment says "Deliberately the SAME lock name"). With `lockAtLeastFor = 10 s`, whichever job runs first keeps the lock for at least 10 s after it starts. Both are `fixedDelay` 60 s jobs on the same single-threaded scheduler, so the second one starts milliseconds later, finds the lock held and is skipped; 60 s later the same order repeats - so the second job may **never run**. Evidence is circumstantial: 8,928 log lines for the overstay sweep in 24 h on QA vs. 0 for `StaleSessionCompletion` (that job only logs when it closes a session, so it proves nothing by itself).
+**How to confirm (read-only):** (1) `SELECT name, locked_at, lock_until, locked_by FROM shedlock WHERE name = 'booking-overstayAndRolloverSweep'` repeatedly and see whether `locked_at` advances once or twice per minute; (2) count `ACCEPTED` sessions that are checked in, not checked out, and past `end_time + 10 min` - if any exist, the completion job is not running; (3) temporarily log `net.javacrumbs.shedlock` at DEBUG for 5 minutes ("Not executing ... It's locked").
+**Options.** (a) Keep mutual exclusion but run both from **one** scheduled method (overstay sweep, then the completion sweep) under one lock - no starvation, same exclusion; (b) separate lock names plus the row-level re-check that already exists (the commit says both jobs re-check under a row lock) - simplest, but the author chose a shared lock on purpose, so ask first; (c) lower `lockAtLeastFor` to ~1 s - narrows but does not remove the window. Option (a) is my recommendation. Either way the change enables a job that may have been idle, so test it on QA data first (it would close stale sessions at their booked end time).
