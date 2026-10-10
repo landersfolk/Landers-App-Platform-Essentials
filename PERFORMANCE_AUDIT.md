@@ -127,3 +127,35 @@ Facts: every service keeps its whole Hikari pool open (idle connections observed
 | **E. Read replica** for read-heavy queries (search, listings) | new replica + read/write routing (second datasource, `@Transactional(readOnly=true)` routing) in code | highest effort (days) | replica lag: a just-created booking may be missing from a listing |
 | **F. Short-TTL cache of geo search** (also fixes F4) | code only, Redis already available | 1-2 days | stale availability up to the TTL (2-5 s) |
 Recommended order: A (free) -> measure with the baseline -> F -> B or C depending on whether connections or CPU credits are the limit.
+
+## 7. QA baseline findings (2026-10-10) and follow-ups
+
+Full numbers: `load-tests/results/baseline-before.md`. Short version: 50 virtual users, 0 errors, p95 203 ms / p99 399 ms overall, RDS CPU 26%, no Hikari waits.
+
+### 7.1 New findings from the run
+1. **The gateway saturates first** - 64% average / 93% peak of its 1-CPU limit at ~50 req/s.
+2. **`UserStatusFilter` (gateway) calls `GET /api/v1/users/auth/status/{userId}` on every authenticated request, uncached.** user-service received ~147 req/s for 49 req/s at the gateway (about 3 calls per request - worth checking why it is more than 1; the filter may be registered twice in the chain). This is also the busiest consumer of user-service CPU (up to 42%) and of its DB pool (6 of 10 active). Candidate fix (code, approval): cache the status per user for a few seconds and/or fix the duplicate invocation.
+2b. Nothing else came close: landlord-service peaked at 32% CPU, 6/10 DB connections; booking/payment barely used.
+3. **Live QA bug, not caused by the test:** the ConfigMap `user-service-config` on QA is still the old MySQL one (`jdbc:mysql://mysql-db...`, created 2026-07-24, never updated); the other 8 service ConfigMaps are Postgres. The one old user-service pod keeps working; **every newly started user-service pod crash-loops** ("Communications link failure", Flyway/MySQL). The HPA scaled user-service 1 -> 3 after the ramp and the 2 new pods are in CrashLoopBackOff; a normal restart or rollout of user-service would take down login/auth-status for everyone. The correct file exists in the repo: `landers-app-config-maps/postgres/user-service-configmap.yaml`.
+
+### 7.2 Commands for you to apply (I have not applied anything), in this order
+```bash
+# on the QA box (ubuntu), from a checkout of Landers-App-Platform-Essentials at the branch you want
+# 1. FIRST: fix user-service (otherwise any scale-out/restart of it fails). Then check the new pods become Ready.
+kubectl apply -f landers-app-config-maps/postgres/user-service-configmap.yaml
+kubectl delete pod -l app=user-service --field-selector=status.phase!=Running   # optional: clear the crash-looping extras
+kubectl rollout restart deployment/user-service && kubectl rollout status deployment/user-service
+# 2. Gateway tuning (connect timeout + idle limit); gateway has 2 replicas now, so the restart is rolling
+kubectl apply -f landers-app-config-maps/postgres/gateway-service-configmap.yaml
+kubectl rollout restart deployment/gateway-service && kubectl rollout status deployment/gateway-service
+# 3. Latency buckets + Tomcat metrics: ship by merging the perf-latency-buckets branches through the normal CI/ArgoCD flow
+# 4. Chart grace period: merge perf-audit (ArgoCD syncs it)
+```
+Roll back: `kubectl apply -f` the previous version of the ConfigMap from git (`git show <commit>^:path | kubectl apply -f -`) and restart the deployment.
+
+### 7.3 Proposal (NOT applied): `spring.datasource.hikari.minimum-idle`
+- Evidence: RDS holds a flat **81 connections** at idle (9 services x 10 + 1); at 50 virtual users the busiest pools peaked at 6 active. Hikari keeps `minimum-idle` = `maximum-pool-size` by default, so every service holds its whole pool open forever. With HPA max 3 and prod pools of 20, that is up to 540 idle connections against a limit of ~400 on `db.t3.medium`.
+- Change (ConfigMap, per service, qa and prod): `spring.datasource.hikari.minimum-idle: 2` (maximum-pool-size unchanged; idle connections above 2 are retired after `idle-timeout`, 10 min by default - prod already sets 600000).
+- Expected: ~70 fewer idle connections on QA (~160+ on prod), more headroom for autoscaling, no change to peak capacity.
+- Risk: low. The first burst after a quiet period opens connections on demand (a few ms to tens of ms each over TLS to RDS). Roll back: remove the line, restart the service.
+- Needs the services restarted to take effect. Suggest: one service first (e.g. requester-service), watch `hikaricp_connections` and RDS `DatabaseConnections`, then the rest.
