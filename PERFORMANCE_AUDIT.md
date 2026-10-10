@@ -188,6 +188,13 @@ Roll back: `kubectl apply -f` the previous version of the ConfigMap from git (`g
 ### 8.4 How it would be applied (after you approve the table)
 Per service `WebClientConfig`: build the `WebClient` on a Reactor Netty `HttpClient` with `CONNECT_TIMEOUT_MILLIS` and `responseTimeout`; calls that need different values use `.timeout(Duration)` on the individual `Mono`. Blocking `.block()` calls in `booking-service` get `.block(Duration)` with the same value. Repos touched: booking, payment, landlord, requester, corporate (+ gateway only for the missing connect timeout, already done in config). No behavior change except that a call that exceeds the limit now fails instead of hanging.
 
+### 8.5 Applied (2026-10-11) - one commit per service, branch `perf-remote-timeouts`, not pushed
+- Mechanism: the MVC services' `WebClient` runs on the **JDK HttpClient**, so `WebClientConfig` now builds it with `connectTimeout`; read-only/idempotent calls get `.timeout(WebClientConfig.READ_TIMEOUT)` (10 s) on the `Mono`. Verified with the real `WebClientConfig`: hanging server -> `TimeoutException` after 10.1 s; a call with no `.timeout` stays pending; unreachable host -> `HttpConnectTimeoutException` after 3.0 s.
+- booking-service: connect 3 s; 15 read timeouts (landlord, requester, corporate wrappers and `getMyBalance`). The 10 payment POSTs: connect timeout only.
+- payment-service: connect **5 s** for the whole service (it also covers the external Paymob HTTPS calls, which §8.2 gave 5 s; the internal calls therefore get 5 s instead of 3 s); read timeout on the 2 corporate-service reads. **`payment -> booking` PUT notifications and the Paymob POSTs (`createIntention`, `refund`) got the connect timeout only** - I read "payment calls get only the connect timeout" as covering them (they follow money movement or create third-party objects and are not safe to time out and repeat). Say so if you want the 15 s / 30 s response timeouts from §8.2 on them.
+- landlord-service (12), requester-service (5), corporate-service (3): connect 3 s + 10 s read timeouts on the admin/corporate/landlord lookups.
+- On a timeout the caller gets the same kind of exception as for any connection failure today (`ReactiveException`/`TimeoutException` from `.block()`), so existing `catch (Exception)` handling applies; callers that catch only `WebClientResponseException` would surface a generic 500 - same as a refused connection does now.
+
 ## 9. Plans after the baseline (no changes made)
 
 ### Item 7 - JVM memory (F7): the baseline does not support raising the heap
