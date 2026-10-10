@@ -143,7 +143,6 @@ Full numbers: `load-tests/results/baseline-before.md`. Short version: 50 virtual
 # on the QA box (ubuntu), from a checkout of Landers-App-Platform-Essentials at the branch you want
 # 1. FIRST: fix user-service (otherwise any scale-out/restart of it fails). Then check the new pods become Ready.
 kubectl apply -f landers-app-config-maps/postgres/user-service-configmap.yaml
-kubectl delete pod -l app=user-service --field-selector=status.phase!=Running   # optional: clear the crash-looping extras
 kubectl rollout restart deployment/user-service && kubectl rollout status deployment/user-service
 # 2. Gateway tuning (connect timeout + idle limit); gateway has 2 replicas now, so the restart is rolling
 kubectl apply -f landers-app-config-maps/postgres/gateway-service-configmap.yaml
