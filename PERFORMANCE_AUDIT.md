@@ -45,10 +45,10 @@ Status: **APPLIED** = done on a branch, config-only. **APPROVAL** = needs your O
 - `LocationService.availabilityStream`: every open Find Parking / Book Advance stream runs a geo SQL query every `pollSeconds` (mobile default 3 s, server floor 2 s) on `boundedElastic`. N users searching = N/3 queries per second against the shared 10-connection pool that REST also uses.
 - Fix (code): one poll per distinct query shared by all subscribers, or a short (2-5 s) cache of the geo query; or raise the server-side minimum interval. High benefit, medium effort.
 
-**F5. Autoscaling vs. un-locked schedulers. APPROVAL (important correctness risk)**
-- ShedLock coverage: booking-service 8 of 15 `@Scheduled` locked; payment-service 2 of 5; landlord-service 1 of 3; **notification-service 0 of 3 (no ShedLock at all) - and it already has an HPA with max 3**.
-- With >1 replica the un-locked jobs run on every pod (duplicate reminders/notifications/state transitions).
-- So: **do not add HPA to booking-service/landlord-service** (the busiest) until their jobs are locked; add `@SchedulerLock` (code), and consider ShedLock for notification-service.
+**F5. Autoscaling vs. scheduled jobs. RESOLVED - corrected on 2026-10-11 (no action needed).**
+- The first version of this finding was wrong: I counted text matches of `@Scheduled`/`@SchedulerLock` (which included comments). Counting actual annotated methods: **booking-service 8 of 8 jobs are locked, payment-service 2 of 2, landlord-service 1 of 1.** Only notification-service has no locking (3 jobs, no ShedLock dependency), and its jobs are idempotent single SQL statements (`bulkExpirePending`, `deleteByCreatedAtBefore`, and a no-op), so running them on every replica is harmless duplicate work. Locking them would need the ShedLock dependency added to that service and is not required for correctness.
+- Left as-is, worth a look (not a scale-out problem): `StaleSessionCompletionScheduler` and `OverstayRolloverScheduler` (booking-service) use the **same lock name** `booking-overstayAndRolloverSweep` with `lockAtLeastFor=10s`. Because both start on the same 60 s tick, one of them can lose the lock on every tick and effectively never run. I found no log lines for `StaleSessionCompletion` in the last 24 h on QA, which is consistent with that but not proof (it only logs when it finds a session). Changing the name would start a job that may have been inactive, so it needs your decision.
+- Therefore HPA on booking-service/landlord-service is not blocked by scheduling. It is still not applied (capacity/DB-connection decision, see F10/F11).
 
 ### Tier 2 - medium impact
 
@@ -187,3 +187,16 @@ Roll back: `kubectl apply -f` the previous version of the ConfigMap from git (`g
 
 ### 8.4 How it would be applied (after you approve the table)
 Per service `WebClientConfig`: build the `WebClient` on a Reactor Netty `HttpClient` with `CONNECT_TIMEOUT_MILLIS` and `responseTimeout`; calls that need different values use `.timeout(Duration)` on the individual `Mono`. Blocking `.block()` calls in `booking-service` get `.block(Duration)` with the same value. Repos touched: booking, payment, landlord, requester, corporate (+ gateway only for the missing connect timeout, already done in config). No behavior change except that a call that exceeds the limit now fails instead of hanging.
+
+## 9. Plans after the baseline (no changes made)
+
+### Item 7 - JVM memory (F7): the baseline does not support raising the heap
+- At 50 virtual users the **maximum heap in use was 65-94 MB per service against a ~256 MB default maximum**, and total GC pause time over 7.4 minutes was 0.01-1.3 s (gateway 1.29 s, user-service 1.08 s, landlord 0.68 s, the rest below 0.1 s). The gateway's GC time is the only value worth watching.
+- Plan: do **not** change `MaxRAMPercentage` now. Re-measure at higher load after the status-check amplification is fixed; raise the heap only if heap use gets near ~70% of the maximum or GC pauses exceed ~5% of run time. Revisit with the memory limit at the same time. What the numbers *do* point at is CPU (item below), not memory.
+
+### What the baseline points at instead (candidate next steps, all need your OK)
+1. **Gateway CPU (93% of its 1-CPU limit at ~50 req/s).** Cause candidates: JWT validation + routing + the per-request status call to user-service (about 3 per request, uncached). Plan: find why the filter fires ~3 times per request (registered twice?), then cache the status for a few seconds. Expected: the single biggest CPU and latency win, and ~2/3 less load on user-service.
+2. **CPU request/limit for the gateway** (request 200m / limit 1 CPU, HPA at 80% of the request): the autoscaler reacted only after the run. A higher request (e.g. 500m) with the same limit makes the HPA scale on real load. Config only, but it changes pod scheduling on the shared QA node.
+
+### Item 4 - SSE availability streams polling the DB (F4)
+- Not covered by the baseline (it opened no streams). Plan: (1) add a k6 scenario that opens N concurrent `nearby/available/stream` and `by-city/stream` connections for a few minutes with the existing read-only account and measure `hikaricp_connections_active`, landlord-service CPU and query rate at N = 10 / 50 / 100; (2) based on that, choose between: a server-side minimum poll interval (config/small code), one shared poll per distinct query key with fan-out (code, medium), or a short-TTL cache of the geo query (code, small). Nothing is changed until the measurement exists.
