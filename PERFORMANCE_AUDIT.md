@@ -104,3 +104,26 @@ Watch in Grafana during the run: `histogram_quantile(0.95, sum by (le,applicatio
 ## 5. Not verified
 
 Nothing was load-tested; the benefit of every item is expected, not measured. The ConfigMap change is validated (YAML parses; property names checked against `spring-cloud-gateway-server-4.3.0` metadata) but was not applied to the cluster. Unit/integration suites of all 9 services pass with the application.yml changes.
+
+## 6. Options (no changes made): gateway protection (F8) and database capacity (F10)
+
+### F8 - gateway rate limiting, circuit breaking, timeouts
+| Option | Needs | Cost / effort | Risk |
+|---|---|---|---|
+| **A. Per-user/IP rate limit** with Spring Cloud Gateway `RequestRateLimiter` | new dependency `spring-boot-starter-data-redis-reactive` in gateway-service; Redis is already in the cluster (`redis-db`) - the gateway ConfigMap even has the host set but no client; a `KeyResolver` bean (user id from the JWT, else IP) | ~1-2 days incl. tests; Redis becomes a gateway dependency (needs a fail-open policy) | wrong limits throttle real users (shared NAT/office IPs); start in "report only" (log, don't reject) |
+| **B. Circuit breaker + fallback** with `CircuitBreaker` filter + Resilience4j | new dependency `spring-cloud-starter-circuitbreaker-reactor-resilience4j`; per-route config | ~1 day; fallbacks must be defined per route (what does an app get when booking-service is down?) | a too-eager breaker turns a slow period into an outage; needs tuning from the baseline |
+| **C. Per-route response timeout** via route metadata `response-timeout` (not global) | no dependency; config only | hours | must exclude SSE routes (`/lands/*/stream`) - a short timeout would cut live availability streams |
+| **D. Request size limit** at the gateway | config / small filter | hours | uploads go through the gateway (photos up to 10 MB each, 50 MB per request) |
+Recommended order: C (cheap, no dependency) -> A in report-only mode -> B only for booking/payment routes after the F3 timeouts are in.
+
+### F10 - database capacity (RDS `db.t3.medium`, single-AZ, no replica)
+Facts: every service keeps its whole Hikari pool open (idle connections observed on QA: 81 = 9 x 10 + 1). Worst case with HPA max 3: 270 (QA) / 540 (prod) vs. a limit of roughly 400 on this class. Burstable CPU (credit balance 576 on 2026-10-11).
+| Option | Needs | Cost | Risk |
+|---|---|---|---|
+| **A. Lower idle connections**: `hikari.minimum-idle` (e.g. 2) so idle services stop holding 10 each; max stays 10/20 | ConfigMap only | none | first burst after idle pays connection-setup latency; **safest first step** |
+| **B. RDS Proxy** (connection pooling in front of RDS) | new AWS resource + endpoint change in 9 ConfigMaps; IAM/secret wiring | ~$ per vCPU-hour of the instance + 1-2 days | pinning with prepared statements/session state can reduce multiplexing; test with the app |
+| **C. Bigger / non-burstable class** (e.g. `m6g.large` or `db.t4g.large` unlimited) | RDS modify (brief failover if Multi-AZ, otherwise reboot) | monthly cost roughly 1.5-3x | needs a maintenance window |
+| **D. Multi-AZ** | RDS modify | roughly 2x instance cost | availability, not throughput |
+| **E. Read replica** for read-heavy queries (search, listings) | new replica + read/write routing (second datasource, `@Transactional(readOnly=true)` routing) in code | highest effort (days) | replica lag: a just-created booking may be missing from a listing |
+| **F. Short-TTL cache of geo search** (also fixes F4) | code only, Redis already available | 1-2 days | stale availability up to the TTL (2-5 s) |
+Recommended order: A (free) -> measure with the baseline -> F -> B or C depending on whether connections or CPU credits are the limit.
