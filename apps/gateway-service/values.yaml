@@ -34,3 +34,9 @@ autoscaling:
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilizationPercentage: 80
+
+# Separate probes. REQUIRES the gateway image that permits /actuator/health/** (gateway-service commit 0f6d4a0);
+# with an older image these paths answer 401 and the pod would be killed.
+probes:
+  livenessPath: /actuator/health/liveness
+  readinessPath: /actuator/health/readiness
