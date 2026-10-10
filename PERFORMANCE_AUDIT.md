@@ -1,0 +1,106 @@
+# Backend scalability & performance audit
+
+Scope: the 9 Spring Boot services behind the gateway, their config (Helm chart + ConfigMaps), and the QA cluster.
+Rule followed: no business logic, API, schema or behaviour changes; no new dependencies/infrastructure.
+Facts below were read from the code/config and, for the cluster, from read-only `kubectl`/`aws` commands on 2026-10-11.
+
+## 1. System summary
+
+| Item | Finding |
+|---|---|
+| Java / framework | Java 21, Spring Boot 3.5.10, Spring Cloud 2025.0.0 (all services) |
+| Gateway | `gateway-service`: **reactive** (WebFlux + Spring Cloud Gateway 4.3.0). Blocking work (Keycloak admin, Feign) is already offloaded to `boundedElastic`. |
+| Other 8 services | **blocking Spring MVC / Tomcat** (200 threads, accept-count 100, defaults), JPA/Hibernate, Hikari |
+| Database | one AWS RDS PostgreSQL 18, `db.t3.medium` (2 vCPU/4 GiB, burstable), single-AZ, no replica, 20 GiB; shared by all 9 services |
+| Pools | Hikari max 10 per service on QA, 20 on prod (ConfigMaps). Worst case with HPA max 3: 270 (QA) / 540 (prod) connections |
+| Service-to-service | `WebClient` + `.block()` (booking-service alone has 142 `.block()` calls), Feign (`commons-cloud`, used by corporate/requester/gateway), Kafka for events |
+| Cache | Redis already deployed and used (`CacheConfig`: reference data + profiles, 6h TTL) |
+| Cluster (QA) | one k3s node: 4 CPU / 16 GiB, ~4% CPU, 52% memory. Pods use 350-650 MiB each (requests 200m/512Mi, limits 1 CPU/1Gi) |
+| Autoscaling | HPA (CPU 80%, 1-3 replicas) on 7 services; **none** on booking-service and landlord-service |
+| Observability | Prometheus + Grafana + Loki + Promtail running; `/actuator/prometheus` on every service; no tracing |
+
+## 2. Findings, ranked by impact vs. risk
+
+Status: **APPLIED** = done on a branch, config-only. **APPROVAL** = needs your OK (code change, dependency, behaviour or capacity risk).
+
+### Tier 1 - high impact
+
+**F1. DB connection held across remote calls (booking-service, all MVC services). APPROVAL**
+- `spring.jpa.open-in-view` is the Spring default (`true`; no override anywhere). With it, a request keeps its DB connection until the response is written. booking-service also has `@Transactional` methods that call payment/landlord-service with `.block()` inside the transaction (`LandLordBookingService`: 19 `@Transactional`, 19 `.block()`; same in the other 5 booking classes).
+- Risk under load: with a 10-connection pool, ~10 concurrent booking requests can exhaust it while they wait on another service; everything else on that service then queues for 30 s (`connection-timeout`) and fails.
+- Fix: (a) `spring.jpa.open-in-view=false` (config, but may surface `LazyInitializationException` where DTO mapping touches lazy associations outside a transaction - needs a test pass), (b) move remote calls out of `@Transactional` where the logic allows (code).
+- Benefit: the largest single increase in sustainable concurrency. Risk: medium (behaviour on lazy loading); do on QA with the load test.
+
+**F2. Virtual threads. APPROVAL**
+- Supported (Java 21, Boot 3.5). Helps the 8 MVC services, most of all booking-service (142 blocking WebClient calls pinning Tomcat threads). Gateway is reactive: no benefit.
+- Pinning check: **0 `synchronized`** blocks in the services/commons/data module; the only ThreadLocal use is `RequestContextHolder`/`SecurityContextHolder` (fine per virtual thread). No custom thread pools except 2 executor uses in notification-service (review). Hikari/pgjdbc in the Boot 3.5 BOM use locks, not `synchronized`.
+- Caveats: (1) virtual threads do **not** raise DB throughput - the 10-connection pool still caps it (see F1/F10). (2) Enabling the flag also switches `@Scheduled` to a concurrent scheduler: booking-service has 15 jobs that currently run one at a time. Set `spring.task.scheduling.simple.concurrency-limit=1` together with the flag to keep that. (3) Kafka listeners also move to virtual threads.
+- Change: `spring.threads.virtual.enabled=true` (+ the limit above) in each MVC ConfigMap. Roll out booking-service first.
+
+**F3. Downstream HTTP calls have no timeouts (booking, payment, landlord, requester, corporate). APPROVAL**
+- `WebClient.builder().build()` = no response timeout; Reactor Netty's connect timeout is 30 s; `.block()` has no timeout. A hung downstream pins a Tomcat thread (and a DB connection, see F1) indefinitely. Only the gateway sets a (5 s) response timeout.
+- Fix: per-service `WebClientConfig`: connect 5 s, response ~30 s (payments/settlement may need more), and `.block(Duration)` on the hot paths. It is code, and a slow-but-successful call would start failing, so it needs your decision on the numbers.
+
+**F4. SSE streams poll the database per client (landlord-service). APPROVAL**
+- `LocationService.availabilityStream`: every open Find Parking / Book Advance stream runs a geo SQL query every `pollSeconds` (mobile default 3 s, server floor 2 s) on `boundedElastic`. N users searching = N/3 queries per second against the shared 10-connection pool that REST also uses.
+- Fix (code): one poll per distinct query shared by all subscribers, or a short (2-5 s) cache of the geo query; or raise the server-side minimum interval. High benefit, medium effort.
+
+**F5. Autoscaling vs. un-locked schedulers. APPROVAL (important correctness risk)**
+- ShedLock coverage: booking-service 8 of 15 `@Scheduled` locked; payment-service 2 of 5; landlord-service 1 of 3; **notification-service 0 of 3 (no ShedLock at all) - and it already has an HPA with max 3**.
+- With >1 replica the un-locked jobs run on every pod (duplicate reminders/notifications/state transitions).
+- So: **do not add HPA to booking-service/landlord-service** (the busiest) until their jobs are locked; add `@SchedulerLock` (code), and consider ShedLock for notification-service.
+
+### Tier 2 - medium impact
+
+**F6. Probes use the full composite health for both liveness and readiness. APPROVAL**
+- `/actuator/health` includes DB/Redis/Kafka indicators; 3 s timeout x 3 failures. Under CPU saturation or a Redis/DB blip, pods are restarted exactly when load is highest (restart storm).
+- `/actuator/health/liveness` and `/readiness` exist (verified on booking-service). Fix: point liveness at `/liveness`, readiness at `/readiness`. **Blocker:** gateway `SecurityConfig` permits only the exact `/actuator/health`, so the gateway needs `/actuator/health/**` permitted first (code), otherwise its probes get 401 and the pod is killed.
+
+**F7. JVM memory not set in containers. APPROVAL**
+- No `JAVA_TOOL_OPTIONS`/Dockerfile flags: max heap = 25% of the 1 GiB limit = ~256 MiB, while pods already use 350-650 MiB RSS. Under load that means frequent GC.
+- Fix: `-XX:MaxRAMPercentage=60` via env in `apps/<svc>/values.yaml`. The node has ~7.7 GiB free, but raising the heap raises pod memory (OOMKill risk at the 1 GiB limit); decide together with the memory limit after the baseline run.
+
+**F8. Gateway has no rate limiting, circuit breaker or response timeout. APPROVAL**
+- Rate limiting (`RequestRateLimiter`) needs the reactive Redis dependency (Redis exists in the cluster, the gateway has no client); circuit breakers need Resilience4j. Both = new dependencies.
+- A global `response-timeout` would cut the SSE streams that pass through the gateway; use per-route metadata instead. Pool `max-connections` is also unsafe for the same reason (long-lived SSE connections count toward it).
+- No request-size limit at the gateway (services cap multipart at 10 MB / 50 MB).
+
+**F9. Feign retries (commons-cloud `OpenFeignConfig`). APPROVAL**
+- `Retryer.Default(100ms, 1s, 3)` retries on I/O errors for every method including POST (load multiplication + duplicate side effects), and no explicit Feign timeouts (defaults 10 s connect / 60 s read). In commons, so it needs a republish of commons-cloud and a rebuild of all services.
+
+**F10. Database capacity. APPROVAL**
+- db.t3.medium is burstable (CPU credits) with a connection limit of roughly 400. Prod worst case (9 x 20 x 3 = 540) can exceed it. Do **not** raise pool sizes. Options: RDS Proxy (new infra), a bigger/non-burstable class, a read replica (needs read/write routing in code).
+- 353 Flyway scripts, 81 contain index creation; list endpoints are widely paginated (only 9 unpaged `findAll()` calls overall, in admin/corporate/landlord/notification - review whether the tables are large). Run `EXPLAIN` on the nearby/by-city geo queries during the load test.
+
+**F11. HPA tuning. APPROVAL**
+- Target is 80% of a **200m** request (= 160m, i.e. 16% of one core), so scale-out is triggered by small absolute load and there is no memory metric. Tune together with F7 and after the baseline.
+
+### Tier 3 - lower impact / already fine
+
+- Async work: notifications/events already go through Kafka (`booking-status-changed`); the remaining synchronous payment calls are consistency-critical and should stay in the request. No slow email/report work found in the request path.
+- Caching: reference data and profiles are cached in Redis (6 h TTL). Candidate for a short-TTL cache: the nearby/by-city geo queries (see F4). Needs a code change.
+- Graceful shutdown: Spring's default is already `graceful`.
+- Tracing: none. Adding Micrometer Tracing/OpenTelemetry is a dependency (APPROVAL); Loki + Prometheus cover logs/metrics today.
+
+## 3. Changes applied (config only, each its own commit, nothing pushed)
+
+| # | Repo / branch | Change | Roll back |
+|---|---|---|---|
+| 1 | `Landers-App-Platform-Essentials` / `perf-audit` | Gateway ConfigMap (`postgres/`): `httpclient.connect-timeout=5000`, `pool.max-idle-time=15s` | remove the `spring.cloud.gateway.server.webflux.httpclient` block, re-apply ConfigMap, `kubectl rollout restart deploy/gateway-service` |
+| 2 | `Landers-App-Platform-Essentials` / `perf-audit` | Chart default `terminationGracePeriodSeconds` 30 -> 45 | set back to 30 |
+| 3 | all 9 service repos / `perf-latency-buckets` | `management.metrics.distribution.slo` buckets for `http.server.requests` | remove that block from `application.yml` |
+| 4 | the 8 MVC service repos / `perf-latency-buckets` | `server.tomcat.mbeanregistry.enabled=true` (exposes `tomcat_threads_busy`) | remove the `server:` block from `application.yml` |
+| 5 | `Landers-App-Platform-Essentials` / `perf-audit` | this document + `load-tests/qa-baseline.k6.js` | delete the files |
+
+Why these are safe: none changes a request's result. #1 only affects connection setup/reuse between gateway and services (a 5 s connect limit; reused connections are retired 5 s before Tomcat's 20 s keep-alive). #3/#4 only add metrics. #2 only lengthens the maximum shutdown wait.
+
+## 4. Load test (Step 3)
+
+`load-tests/qa-baseline.k6.js` - read-only (no bookings/payments), QA only, 5 -> 25 -> 50 virtual users over 7 minutes against: Find Parking nearby-available (the hottest geo read), Book Advance by-city, requester profile. Thresholds: error rate < 1%, p95 < 800 ms (profile < 500 ms).
+Run it **before** any further change and keep the `--summary-export` output; re-run with identical parameters after each change.
+Watch in Grafana during the run: `histogram_quantile(0.95, sum by (le,application) (rate(http_server_requests_seconds_bucket[1m])))`, `hikaricp_connections_active / _pending / _timeout_total`, `tomcat_threads_busy`, `jvm_gc_pause_seconds`, container CPU/memory, and RDS CPU credits + connections.
+**Not run yet:** k6 is not installed on this machine and the run would load the shared QA box the team also uses - it needs your go-ahead (and ideally a quiet window). No baseline numbers exist yet, so no change here has a measured effect.
+
+## 5. Not verified
+
+Nothing was load-tested; the benefit of every item is expected, not measured. The ConfigMap change is validated (YAML parses; property names checked against `spring-cloud-gateway-server-4.3.0` metadata) but was not applied to the cluster. Unit/integration suites of all 9 services pass with the application.yml changes.
