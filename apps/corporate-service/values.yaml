@@ -33,3 +33,8 @@ autoscaling:
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilizationPercentage: 80
+
+# Separate probes: liveness = app state only (never DB/Redis/Kafka); readiness = app state + DB.
+probes:
+  livenessPath: /actuator/health/liveness
+  readinessPath: /actuator/health/readiness

@@ -27,3 +27,8 @@ infisical:
 prometheus:
   enabled: true
   path: /actuator/prometheus
+
+# Separate probes: liveness = app state only (never DB/Redis/Kafka); readiness = app state + DB.
+probes:
+  livenessPath: /actuator/health/liveness
+  readinessPath: /actuator/health/readiness
