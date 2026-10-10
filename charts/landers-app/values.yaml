@@ -99,6 +99,12 @@ resources:
 probes:
   enabled: true
   path: /actuator/health
+  # Optional separate paths. Empty = use `path` for that probe (what every service did so far).
+  # Backend services set livenessPath: /actuator/health/liveness (app state only - never DB/Redis/Kafka,
+  # so a dependency blip or a CPU-saturated health call cannot restart the pod) and
+  # readinessPath: /actuator/health/readiness (app state + DB). The startupProbe keeps `path`.
+  livenessPath: ""
+  readinessPath: ""
   periodSeconds: 10
   timeoutSeconds: 3
   failureThreshold: 3
