@@ -158,3 +158,32 @@ Roll back: `kubectl apply -f` the previous version of the ConfigMap from git (`g
 - Expected: ~70 fewer idle connections on QA (~160+ on prod), more headroom for autoscaling, no change to peak capacity.
 - Risk: low. The first burst after a quiet period opens connections on demand (a few ms to tens of ms each over TLS to RDS). Roll back: remove the line, restart the service.
 - Needs the services restarted to take effect. Suggest: one service first (e.g. requester-service), watch `hikaricp_connections` and RDS `DatabaseConnections`, then the rest.
+
+## 8. Item 2d - service-to-service timeouts: PROPOSAL (nothing applied; approve the list)
+
+### 8.1 What exists and what the baseline can tell us
+- Today **no** inter-service call has a timeout except the gateway's outbound client (5 s response timeout, no connect timeout - the connect timeout is now set by the gateway ConfigMap commit) and one gateway call in `AppBuildPolicy`. Reactor Netty's own connect timeout is 30 s; `.block()` waits forever.
+- The baseline only exercised `gateway -> user-service` (status check, ~3 ms average on the server) and the landlord-service reads that the gateway serves directly (k6 end-to-end p99 <= 474 ms at 50 virtual users, of which the call itself averaged 14 ms). **It did not call booking->payment, payment->booking, anything->admin, Paymob or the Feign clients**, so there is no measured p99 for those downstreams yet. The numbers below are therefore conservative; once the latency-bucket commits are deployed and the booking/payment flows have been exercised, tighten each to roughly 3x the observed p99.
+
+### 8.2 Proposed values (connect / response), where "response" = time to the full response
+| Caller -> downstream | Calls | Proposed connect / response | Notes |
+|---|---|---|---|
+| gateway -> user-service status check (`UserStatusFilter`) | GET | keep 5 s (set) / connect 5 s (done) | measured avg 3 ms; could drop to 2 s once cached |
+| gateway -> user/corporate/notification (registration, OTP) | POST/GET/PATCH | keep 5 s; OTP send may need longer - check Wapilot latency before changing | registration is a saga with compensation |
+| booking -> landlord-service | GET x5 (spot validation), PATCH x2 (spot status) | 3 s / 10 s | PATCH is a state change but idempotent (set status) |
+| booking -> requester-service | GET x3, POST x1 (eligibility) | 3 s / 10 s | reads |
+| booking -> corporate-service | GET x3 | 3 s / 10 s | reads |
+| landlord / requester / corporate -> admin-service | reads and `POST .../validate`, `.../bulk` (read-only lookups) | 3 s / 10 s | reference data, cached on the admin side |
+| payment -> corporate-service | GET x2 | 3 s / 10 s | reads |
+| payment -> booking-service (`notifyPaymentConfirmed/Cancelled`) | PUT x2 | 3 s / 15 s | state notification after money moved - **review individually** |
+| payment -> Paymob (external HTTPS) | POST `createIntention`, `refund` | 5 s / 30 s | third party; slowest legitimate call in the system; **review individually** |
+| booking -> payment-service reads | GET `getMyBalance` | 3 s / 10 s | read |
+
+### 8.3 Payment-related calls - need your individual decision
+`booking -> payment-service` POST x10: `settle`, `settleSplit`, `collectCashFee`, `chargeOnlineFee`, `chargeTimerStartFee`, `refundCancellation`, `holdBookingEscrow`, `releaseBookingEscrow`, `recordEarningsEntry`, `settleEarningsCash`.
+- **Hazard:** none of the payment-service endpoints I looked at (`settleBooking`, `holdBookingPayment`, `settleSplitBooking`, `releaseBookingEscrow`) de-duplicates by booking (no idempotency key / existing-transaction check). Callers treat an exception as "not charged" (e.g. `settle` returns null and the caller deliberately does not advance `amountPaidSoFar` "so the delta can be retried"). A client **response timeout** can fire after payment-service has already committed, turning a slow success into a retried charge.
+- **Recommendation:** for these 10 calls set only a **connect timeout (3 s)** - safe, the request was never sent - and **no response timeout** (or a long one, 60 s, only as a thread-leak backstop) until either payment-service accepts an idempotency key per call, or the callers learn to treat a timeout as "unknown, reconcile" instead of "failed". That is a code change in two services and needs a separate decision.
+- The Feign retry fix (item 2b) already removed the other way a payment POST could be repeated.
+
+### 8.4 How it would be applied (after you approve the table)
+Per service `WebClientConfig`: build the `WebClient` on a Reactor Netty `HttpClient` with `CONNECT_TIMEOUT_MILLIS` and `responseTimeout`; calls that need different values use `.timeout(Duration)` on the individual `Mono`. Blocking `.block()` calls in `booking-service` get `.block(Duration)` with the same value. Repos touched: booking, payment, landlord, requester, corporate (+ gateway only for the missing connect timeout, already done in config). No behavior change except that a call that exceeds the limit now fails instead of hanging.
