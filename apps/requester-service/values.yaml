@@ -2,7 +2,7 @@ nameOverride: requester-service
 
 image:
   repository: ghcr.io/landersfolk/requester-service
-  tag: "e3723af"
+  tag: "0931aff"
   pullPolicy: Always
 
 containerPort: 7072
