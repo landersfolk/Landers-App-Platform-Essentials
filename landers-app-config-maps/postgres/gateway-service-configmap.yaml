@@ -42,6 +42,12 @@ data:
         # Mandatory app_id only on login, registration and password reset. Enable once new app builds are out.
         require-header-on-auth: false
 
+    # Forgot-password OTP check, all profiles. false = TEMPORARILY skipped (no code is sent; the app goes
+    # straight to choosing a new password) until the WhatsApp sender is integrated with Meta. The OTP code is
+    # intact: set this back to true (and restart the gateway) to enforce it again.
+    password-reset:
+      otp-required: false
+
     jwt:
       auth:
         converter:
