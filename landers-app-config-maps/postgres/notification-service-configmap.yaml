@@ -83,6 +83,12 @@ data:
     firebase:
       credentials-json: ""
 
+    # WhatsApp OTP sender: META (Cloud API, secrets under Infisical /META) or WAPILOT.
+    otp:
+      provider:
+        whatsapp:
+          active-vendor: META
+
     server:
       port: 7078
 
@@ -165,6 +171,12 @@ data:
 
     firebase:
       credentials-json: ""
+
+    # WhatsApp OTP sender: META (Cloud API, secrets under Infisical /META) or WAPILOT.
+    otp:
+      provider:
+        whatsapp:
+          active-vendor: META
 
     server:
       port: 7078
@@ -251,6 +263,12 @@ data:
 
     firebase:
       credentials-json: ""
+
+    # WhatsApp OTP sender: META (Cloud API, secrets under Infisical /META) or WAPILOT.
+    otp:
+      provider:
+        whatsapp:
+          active-vendor: META
 
     server:
       port: 7078
