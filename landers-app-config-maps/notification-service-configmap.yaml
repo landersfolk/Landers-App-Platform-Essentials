@@ -47,6 +47,7 @@ data:
           bookingStatusChanged: booking-status-changed
           announcementCreated: announcement-created
           landApproved: land-approved
+          walletThresholdCrossed: wallet-threshold-crossed
         producer:
           acks: all
           retries: 3
@@ -81,6 +82,12 @@ data:
     # no-op gracefully until this is set via Vault (secret/landers-app/notification-service).
     firebase:
       credentials-json: ""
+
+    # WhatsApp OTP sender: META (Cloud API, secrets under Infisical /META) or WAPILOT.
+    otp:
+      provider:
+        whatsapp:
+          active-vendor: META
 
     server:
       port: 7078
@@ -131,6 +138,7 @@ data:
           bookingStatusChanged: booking-status-changed
           announcementCreated: announcement-created
           landApproved: land-approved
+          walletThresholdCrossed: wallet-threshold-crossed
         producer:
           acks: all
           retries: 3
@@ -163,6 +171,12 @@ data:
 
     firebase:
       credentials-json: ""
+
+    # WhatsApp OTP sender: META (Cloud API, secrets under Infisical /META) or WAPILOT.
+    otp:
+      provider:
+        whatsapp:
+          active-vendor: META
 
     server:
       port: 7078
@@ -216,6 +230,7 @@ data:
           bookingStatusChanged: booking-status-changed
           announcementCreated: announcement-created
           landApproved: land-approved
+          walletThresholdCrossed: wallet-threshold-crossed
         producer:
           acks: all
           retries: 5
@@ -248,6 +263,12 @@ data:
 
     firebase:
       credentials-json: ""
+
+    # WhatsApp OTP sender: META (Cloud API, secrets under Infisical /META) or WAPILOT.
+    otp:
+      provider:
+        whatsapp:
+          active-vendor: META
 
     server:
       port: 7078
