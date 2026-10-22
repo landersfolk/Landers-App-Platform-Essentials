@@ -7,6 +7,9 @@ data:
   application.yaml: |-
     ---
     # DEV Profile
+    landers:
+      outbox:
+        enabled: true
     spring:
       config:
         activate:
@@ -22,6 +25,14 @@ data:
           port: 6379
       cache:
         type: redis
+      flyway:
+        enabled: true
+        locations: classpath:db/migration
+        lock-retry-count: 10
+        url: jdbc:postgresql://localhost:5432/landers-app-lander-db
+        schemas: user_service
+        default-schema: user_service
+        create-schemas: false
       jpa:
         hibernate:
           ddl-auto: none
@@ -91,6 +102,9 @@ data:
 
     ---
     # QA Profile
+    landers:
+      outbox:
+        enabled: true
     spring:
       config:
         activate:
@@ -107,6 +121,14 @@ data:
           port: 6379
       cache:
         type: redis
+      flyway:
+        enabled: true
+        locations: classpath:db/migration
+        lock-retry-count: 10
+        url: jdbc:postgresql://landers-db.c52kk2mayopg.eu-west-1.rds.amazonaws.com:5432/landers-app-lander-db?sslmode=require
+        schemas: user_service
+        default-schema: user_service
+        create-schemas: false
       jpa:
         hibernate:
           ddl-auto: none
@@ -166,6 +188,9 @@ data:
 
     ---
     # PROD Profile
+    landers:
+      outbox:
+        enabled: true
     spring:
       config:
         activate:
@@ -174,9 +199,9 @@ data:
         url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
         driver-class-name: org.postgresql.Driver
         hikari:
-          maximum-pool-size: 20
+          maximum-pool-size: 12   # 8 services x up to 3 replicas x 12 = 288, inside the ~420 connections of db.t3.medium (was 20: 480)
           connection-timeout: 20000
-          minimum-idle: 10
+          minimum-idle: 4
           idle-timeout: 600000
           max-lifetime: 1800000
       data:
@@ -185,6 +210,14 @@ data:
           port: 6379
       cache:
         type: redis
+      flyway:
+        enabled: true
+        locations: classpath:db/migration
+        lock-retry-count: 10
+        url: jdbc:postgresql://postgres-db:5432/landers-app-lander-db
+        schemas: user_service
+        default-schema: user_service
+        create-schemas: false
       jpa:
         hibernate:
           ddl-auto: none
