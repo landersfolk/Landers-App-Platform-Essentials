@@ -1,0 +1,160 @@
+{
+  "label": "baseline-after",
+  "prometheus": {
+    "cpu_avg": {
+      "admin-service": 0.021,
+      "booking-service": 0.031,
+      "corporate-service": 0.019,
+      "gateway-service": 0.319,
+      "landlord-service": 0.205,
+      "notification-service": 0.015,
+      "payment-service": 0.024,
+      "requester-service": 0.065,
+      "user-service": 0.544
+    },
+    "cpu_max": {
+      "admin-service": 0.06,
+      "booking-service": 0.065,
+      "corporate-service": 0.091,
+      "gateway-service": 0.955,
+      "landlord-service": 0.462,
+      "notification-service": 0.035,
+      "payment-service": 0.112,
+      "requester-service": 0.199,
+      "user-service": 0.954
+    },
+    "gc_pause_seconds": {
+      "admin-service": 0.069,
+      "booking-service": 0.051,
+      "corporate-service": 0.062,
+      "gateway-service": 0.976,
+      "landlord-service": 1.008,
+      "notification-service": 0.052,
+      "payment-service": 0.057,
+      "requester-service": 0.119,
+      "user-service": 1.355
+    },
+    "heap_used_max_mb": {
+      "admin-service": 86.27,
+      "booking-service": 78.534,
+      "corporate-service": 82.154,
+      "gateway-service": 55.013,
+      "landlord-service": 90.152,
+      "notification-service": 74.625,
+      "payment-service": 70.312,
+      "requester-service": 72.488,
+      "user-service": 62.661
+    },
+    "hikari_acquire_avg_ms": {
+      "admin-service": 0.442,
+      "booking-service": 0.194,
+      "corporate-service": 1.079,
+      "landlord-service": 0.257,
+      "notification-service": 0.85,
+      "payment-service": 0.712,
+      "requester-service": 0.746,
+      "user-service": 0.057
+    },
+    "hikari_active_max": {
+      "admin-service": 0.0,
+      "booking-service": 0.0,
+      "corporate-service": 0.0,
+      "landlord-service": 4.0,
+      "notification-service": 0.0,
+      "payment-service": 0.0,
+      "requester-service": 0.0,
+      "user-service": 2.0
+    },
+    "hikari_pending_max": {
+      "admin-service": 0.0,
+      "booking-service": 0.0,
+      "corporate-service": 0.0,
+      "landlord-service": 0.0,
+      "notification-service": 0.0,
+      "payment-service": 0.0,
+      "requester-service": 0.0,
+      "user-service": 0.0
+    },
+    "hikari_pool_max": {
+      "admin-service": 10.0,
+      "booking-service": 10.0,
+      "corporate-service": 10.0,
+      "landlord-service": 10.0,
+      "notification-service": 10.0,
+      "payment-service": 10.0,
+      "requester-service": 10.0,
+      "user-service": 10.0
+    },
+    "hikari_timeouts": {
+      "admin-service": 0.0,
+      "booking-service": 0.0,
+      "corporate-service": 0.0,
+      "landlord-service": 0.0,
+      "notification-service": 0.0,
+      "payment-service": 0.0,
+      "requester-service": 0.0,
+      "user-service": 0.0
+    },
+    "http_5xx": {},
+    "http_avg_latency_ms": {
+      "admin-service": 5.397,
+      "booking-service": 5.554,
+      "corporate-service": 5.657,
+      "gateway-service": 66.129,
+      "landlord-service": 18.462,
+      "notification-service": 6.382,
+      "payment-service": 6.395,
+      "requester-service": 5.86,
+      "user-service": 5.597
+    },
+    "http_req_per_s": {
+      "admin-service": 0.28,
+      "booking-service": 0.267,
+      "corporate-service": 0.267,
+      "gateway-service": 19.585,
+      "landlord-service": 15.878,
+      "notification-service": 0.267,
+      "payment-service": 0.267,
+      "requester-service": 4.134,
+      "user-service": 57.343
+    },
+    "jvm_threads_max": {
+      "admin-service": 46.0,
+      "booking-service": 41.0,
+      "corporate-service": 46.0,
+      "gateway-service": 46.0,
+      "landlord-service": 54.0,
+      "notification-service": 60.0,
+      "payment-service": 41.0,
+      "requester-service": 48.0,
+      "user-service": 54.0
+    },
+    "tomcat_busy_max": {
+      "admin-service": 1.0,
+      "booking-service": 1.0,
+      "corporate-service": 1.0,
+      "landlord-service": 5.0,
+      "notification-service": 1.0,
+      "payment-service": 1.0,
+      "requester-service": 1.0,
+      "user-service": 5.0
+    }
+  },
+  "rds": {
+    "CPUCreditBalance": {
+      "Minimum": 576.0
+    },
+    "CPUUtilization": {
+      "Average": 13.29,
+      "Maximum": 13.29
+    },
+    "DatabaseConnections": {
+      "Average": 101.0,
+      "Maximum": 101.0
+    }
+  },
+  "window": [
+    "2026-10-10T23:17:07Z",
+    "2026-10-10T23:24:51Z"
+  ]
+}

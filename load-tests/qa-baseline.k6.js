@@ -17,17 +17,24 @@ const LNG = __ENV.LNG || '31.2357';
 const CITY_ID = __ENV.CITY_ID || '';
 const APP_ID = __ENV.APP_ID || 'landers-requester';
 
+// -e WARMUP=1 runs only a 2-minute, 20-VU warm-up (not for measurement): freshly started pods run
+// cold JVMs (JIT compilation eats most of a 1-CPU limit) and the autoscaler adds more cold pods under load,
+// which makes a first run after any deploy look ~10x slower. Warm up, then run the real ramp.
+const STAGES = __ENV.WARMUP
+  ? [{duration: '30s', target: 20}, {duration: '90s', target: 20}, {duration: '10s', target: 0}]
+  : [
+      {duration: '30s', target: 5},  {duration: '1m', target: 5},
+      {duration: '30s', target: 20}, {duration: '2m', target: 20},
+      {duration: '30s', target: 50}, {duration: '2m', target: 50},
+      {duration: '30s', target: 0},
+    ];
+
 export const options = {
   scenarios: {
     browse: {
       executor: 'ramping-vus',
       startVUs: 1,
-      stages: [
-        {duration: '30s', target: 5},  {duration: '1m', target: 5},
-        {duration: '30s', target: 20}, {duration: '2m', target: 20},
-        {duration: '30s', target: 50}, {duration: '2m', target: 50},
-        {duration: '30s', target: 0},
-      ],
+      stages: STAGES,
       gracefulRampDown: '20s',
       gracefulStop: '20s',
     },
