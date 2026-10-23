@@ -2,7 +2,7 @@ nameOverride: payment-service
 
 image:
   repository: ghcr.io/landersfolk/payment-service
-  tag: "0b48ff7"
+  tag: "403a94b"
   pullPolicy: Always
 
 containerPort: 7077
