@@ -2,7 +2,7 @@ nameOverride: landlord-service
 
 image:
   repository: ghcr.io/landersfolk/landlord-service
-  tag: "94ed7f5"
+  tag: "c1daaf1"
   pullPolicy: Always
 
 containerPort: 7073
