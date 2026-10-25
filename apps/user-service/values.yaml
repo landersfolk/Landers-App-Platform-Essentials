@@ -2,7 +2,7 @@ nameOverride: user-service
 
 image:
   repository: ghcr.io/landersfolk/user-service
-  tag: "6ff71f9"
+  tag: "bef7899"
   pullPolicy: Always
 
 containerPort: 7075
