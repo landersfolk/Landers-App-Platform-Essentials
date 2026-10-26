@@ -12,6 +12,8 @@ service:
 
 env:
   SPRING_PROFILES_ACTIVE: qa
+  # XPay card checkout for non-EGP bookings (payment-service). Needs the four /XPAY secrets in Infisical (staging); startup fails naming any that is missing.
+  PAYMENTS_XPAY_ENABLED: "true"
 
 # Infisical replaces Vault for secrets management (see commons-cloud's
 # InfisicalEnvironmentPostProcessor). secretName points at a pre-created k8s
