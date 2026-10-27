@@ -2,7 +2,7 @@ nameOverride: corporate-service
 
 image:
   repository: ghcr.io/landersfolk/corporate-service
-  tag: "fe8074b"
+  tag: "98bed32"
   pullPolicy: Always
 
 containerPort: 7074
