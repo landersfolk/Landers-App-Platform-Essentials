@@ -2,7 +2,7 @@ nameOverride: search-service
 
 image:
   repository: ghcr.io/landersfolk/search-service
-  tag: "REPLACE_WITH_FIRST_CI_SHA"
+  tag: "dc7d80f"
   pullPolicy: Always
 
 containerPort: 7079
