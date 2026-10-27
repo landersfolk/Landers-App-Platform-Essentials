@@ -76,6 +76,21 @@ data:
           principle-attribute: preferred_username
 
 
+    # Reverse geocoding (Nominatim) only when our own data cannot place the searched point; needs an identifying User-Agent.
+    landers:
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
+
+    # Where the first load / consistency check reads the owners' full rows (internal endpoints; never used while a search runs).
+    search:
+      sources:
+        landlord-url: http://landlord-service:7073
+        corporate-url: http://corporate-service:7074
+
+    media:
+      upload:
+        base-path: uploads/landlord
+
     server:
       port: 7079
 
@@ -154,6 +169,26 @@ data:
           principle-attribute: preferred_username
 
 
+
+    # Reverse geocoding (Nominatim) only when our own data cannot place the searched point; needs an identifying User-Agent.
+    landers:
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
+
+    # Where the first load / consistency check reads the owners' full rows (internal endpoints; never used while a search runs).
+    search:
+      sources:
+        landlord-url: http://landlord-service:7073
+        corporate-url: http://corporate-service:7074
+
+    media:
+      upload:
+        provider: s3
+        base-path: uploads/landlord
+        s3:
+          bucket: landers-assets-qa-124188344045-eu-west-1-an
+          region: eu-west-1
+          storage-class: STANDARD_IA
 
     server:
       port: 7079
@@ -236,6 +271,21 @@ data:
           principle-attribute: preferred_username
 
 
+
+    # Reverse geocoding (Nominatim) only when our own data cannot place the searched point; needs an identifying User-Agent.
+    landers:
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
+
+    # Where the first load / consistency check reads the owners' full rows (internal endpoints; never used while a search runs).
+    search:
+      sources:
+        landlord-url: http://landlord-service:7073
+        corporate-url: http://corporate-service:7074
+
+    media:
+      upload:
+        base-path: uploads/landlord
 
     server:
       port: 7079
