@@ -103,6 +103,10 @@ data:
                   uri: http://localhost:7073
                   predicates:
                     - Path=/api/v1/landlords/**
+                - id: search-service
+                  uri: http://localhost:7079
+                  predicates:
+                    - Path=/api/v1/search/**
                 - id: requester-service
                   uri: http://localhost:7072
                   predicates:
@@ -227,6 +231,10 @@ data:
                   uri: lb://landlord-service
                   predicates:
                     - Path=/api/v1/landlords/**
+                - id: search-service
+                  uri: lb://search-service
+                  predicates:
+                    - Path=/api/v1/search/**
                 - id: requester-service
                   uri: lb://requester-service
                   predicates:
@@ -348,6 +356,10 @@ data:
                   uri: lb://landlord-service
                   predicates:
                     - Path=/api/v1/landlords/**
+                - id: search-service
+                  uri: lb://search-service
+                  predicates:
+                    - Path=/api/v1/search/**
                 - id: requester-service
                   uri: lb://requester-service
                   predicates:
