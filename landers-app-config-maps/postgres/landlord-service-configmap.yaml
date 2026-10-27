@@ -8,6 +8,9 @@ data:
     ---
     # DEV Profile
     landers:
+      # Nominatim (reverse geocoding fallback) requires a User-Agent that identifies the application. Without it the geocoder stays off.
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
       outbox:
         enabled: true
     spring:
@@ -110,6 +113,9 @@ data:
     ---
     # QA Profile
     landers:
+      # Nominatim (reverse geocoding fallback) requires a User-Agent that identifies the application. Without it the geocoder stays off.
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
       outbox:
         enabled: true
     spring:
@@ -213,6 +219,9 @@ data:
     ---
     # PROD Profile
     landers:
+      # Nominatim (reverse geocoding fallback) requires a User-Agent that identifies the application. Without it the geocoder stays off.
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
       outbox:
         enabled: true
     spring:

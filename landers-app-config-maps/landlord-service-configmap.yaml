@@ -8,6 +8,9 @@ data:
     ---
     # DEV Profile
     landers:
+      # Nominatim (reverse geocoding fallback) requires a User-Agent that identifies the application. Without it the geocoder stays off.
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
       outbox:
         enabled: true
     spring:
@@ -54,6 +57,7 @@ data:
           userRegistrationLandlordDlt: user-registration-landlord-dlt
           landApproved: land-approved
           landApprovedDlt: land-approved-dlt
+          walletThresholdCrossed: wallet-threshold-crossed
         producer:
           acks: all
           retries: 3
@@ -109,6 +113,9 @@ data:
     ---
     # QA Profile
     landers:
+      # Nominatim (reverse geocoding fallback) requires a User-Agent that identifies the application. Without it the geocoder stays off.
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
       outbox:
         enabled: true
     spring:
@@ -155,6 +162,7 @@ data:
           userRegistrationLandlordDlt: user-registration-landlord-dlt
           landApproved: land-approved
           landApprovedDlt: land-approved-dlt
+          walletThresholdCrossed: wallet-threshold-crossed
         producer:
           acks: all
           retries: 3
@@ -211,6 +219,9 @@ data:
     ---
     # PROD Profile
     landers:
+      # Nominatim (reverse geocoding fallback) requires a User-Agent that identifies the application. Without it the geocoder stays off.
+      geocoding:
+        user-agent: "LandersApp/1.0 (+https://landersfolk.com)"
       outbox:
         enabled: true
     spring:
@@ -260,6 +271,7 @@ data:
           userRegistrationLandlordDlt: user-registration-landlord-dlt
           landApproved: land-approved
           landApprovedDlt: land-approved-dlt
+          walletThresholdCrossed: wallet-threshold-crossed
         producer:
           acks: all
           retries: 5
