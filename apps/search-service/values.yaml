@@ -1,0 +1,40 @@
+nameOverride: search-service
+
+image:
+  repository: ghcr.io/landersfolk/search-service
+  tag: "REPLACE_WITH_FIRST_CI_SHA"
+  pullPolicy: Always
+
+containerPort: 7079
+
+service:
+  port: 7079
+
+env:
+  SPRING_PROFILES_ACTIVE: qa
+
+# Infisical replaces Vault for secrets management (see commons-cloud's
+# InfisicalEnvironmentPostProcessor). secretName points at a pre-created k8s
+# Secret (kubectl create secret generic infisical-credentials --from-literal=
+# INFISICAL_CLIENT_ID=... --from-literal=INFISICAL_CLIENT_SECRET=...) - never
+# committed here. env=staging matches this project's actual configured
+# Infisical environment slug for QA.
+infisical:
+  enabled: true
+  env: staging
+  secretName: infisical-credentials
+
+prometheus:
+  enabled: true
+  path: /actuator/prometheus
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+# Separate probes: liveness = app state only (never DB/Redis/Kafka); readiness = app state + DB.
+probes:
+  livenessPath: /actuator/health/liveness
+  readinessPath: /actuator/health/readiness
