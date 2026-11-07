@@ -12,6 +12,9 @@ service:
 
 env:
   SPRING_PROFILES_ACTIVE: qa
+  # Email sender: graph sends through Microsoft Graph (credentials from Infisical /MICROSOFT/MAIL). The service refuses to
+  # start without this (the default, logging, sends nothing). Set on the QA server; see RELEASE notes.
+  EMAIL_PROVIDER: graph
 
 # Infisical replaces Vault for secrets management (see commons-cloud's
 # InfisicalEnvironmentPostProcessor). secretName points at a pre-created k8s
