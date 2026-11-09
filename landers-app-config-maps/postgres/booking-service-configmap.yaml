@@ -104,6 +104,8 @@ data:
         url: http://localhost:7077
       corporate-service:
         url: http://localhost:7074
+      notification-service:
+        url: http://localhost:7078
 
     ---
     # QA Profile
@@ -209,6 +211,8 @@ data:
         url: http://payment-service:7077
       corporate-service:
         url: http://corporate-service:7074
+      notification-service:
+        url: http://notification-service:7078
 
     ---
     # PROD Profile
@@ -317,3 +321,5 @@ data:
         url: http://payment-service:7077
       corporate-service:
         url: http://corporate-service:7074
+      notification-service:
+        url: http://notification-service:7078
