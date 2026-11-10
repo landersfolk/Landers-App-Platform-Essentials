@@ -42,6 +42,189 @@ data:
         # Mandatory app_id only on login, registration and password reset. Enable once new app builds are out.
         require-header-on-auth: false
 
+      # --- API rate limiting (gateway ratelimit package). ALL OFF: enabled=false and every rule is enforce=false. ---
+      # Token bucket per rule: sustained req/min = 60 * replenish-rate / requested-tokens, burst = burst-capacity / requested-tokens.
+      # These are technical flood backstops ABOVE the business limits (daily booking cap, OTP caps, monthly password-reset cap);
+      # they never replace them. Redis down => the same rule is applied by a per-pod in-memory bucket (effective limit during an
+      # outage = value x gateway replicas, HPA 1-3); no rule fails closed. Shadow mode (enforce=false) only counts:
+      # landers_ratelimit_requests_total{rule,outcome=allowed|rejected|shadow_rejected|redis_error}.
+      # TODO(prod): rate limiting stays disabled in prod until a dedicated, authenticated Redis exists - do NOT point prod at the
+      # QA Redis, and take the Redis host/password from existing secrets (never hardcode credentials here).
+      rate-limit:
+        enabled: false
+        # GATE: IP-keyed rules never reject until this is true, whatever their enforce flag says. Flip it only after the real
+        # X-Forwarded-For chain has been read from the debug log below and landers.audit.trusted-proxy-hops (currently unset = 0,
+        # i.e. the first, client-controlled entry) has been set to the verified hop count: 1 behind the ALB only; it must become 2
+        # if CloudFront is ever added in front of the ALB, and the ALB must then be locked to CloudFront.
+        ip-hops-verified: false
+        redis-timeout-ms: 200
+        fallback-max-keys: 50000
+        # TEMPORARY, QA only: logs the raw X-Forwarded-For / remote address for 1 request in N. Turn off once the hop count is known.
+        debug:
+          enabled: false
+          sample-every: 50
+        # Independent backstop applied to every non-exempt request IN ADDITION to the matching rule.
+        default-ip:
+          id: default-ip
+          key: IP
+          replenish-rate: 100
+          burst-capacity: 300
+          requested-tokens: 1
+          enforce: false
+        # Stage 1 (before auth): IP rules, first match wins. Stage 2 (after auth): USER/ADMIN rules, first match wins.
+        # Exempt from every limit (code default): OPTIONS, /actuator/**, Paymob/XPay webhooks and callbacks.
+        rules:
+          - id: auth-register
+            key: IP
+            methods: [POST]
+            paths:
+              - /api/v1/auth/quick-register/**
+              - /api/v1/auth/full-register/**
+              - /api/v1/auth/corporate-register
+            replenish-rate: 1
+            burst-capacity: 60
+            requested-tokens: 6
+            enforce: false
+          - id: auth-reset-send
+            key: IP
+            methods: [POST]
+            paths:
+              - /api/v1/auth/forgot-password
+              - /api/v1/auth/resend-reset-otp
+              - /api/v1/otp/generate
+              - /api/v1/otp/resend
+            replenish-rate: 1
+            burst-capacity: 90
+            requested-tokens: 6
+            enforce: false
+          - id: auth-login
+            key: IP
+            methods: [POST]
+            paths:
+              - /api/v1/auth/login
+            replenish-rate: 1
+            burst-capacity: 60
+            requested-tokens: 2
+            enforce: false
+          - id: auth-verify
+            key: IP
+            paths:
+              - /api/v1/auth/verify-reset-otp
+              - /api/v1/auth/reset-password
+              - /api/v1/otp/verify
+              - /api/v1/otp/cancel
+              - /api/v1/otp/*/status
+            replenish-rate: 1
+            burst-capacity: 60
+            requested-tokens: 3
+            enforce: false
+          - id: auth-check-username
+            key: IP
+            methods: [GET]
+            paths:
+              - /api/v1/auth/check-username/**
+            replenish-rate: 1
+            burst-capacity: 20
+            requested-tokens: 1
+            enforce: false
+          - id: auth-refresh-logout
+            key: IP
+            methods: [POST]
+            paths:
+              - /api/v1/auth/refresh
+              - /api/v1/auth/logout
+            replenish-rate: 2
+            burst-capacity: 40
+            requested-tokens: 1
+            enforce: false
+          - id: public-qr
+            key: IP
+            paths:
+              - /qr/**
+            replenish-rate: 2
+            burst-capacity: 30
+            requested-tokens: 1
+            enforce: false
+          - id: auth-change-phone-send
+            key: USER
+            methods: [POST]
+            paths:
+              - /api/v1/auth/change-phone/send
+            replenish-rate: 1
+            burst-capacity: 60
+            requested-tokens: 6
+            enforce: false
+          - id: auth-sensitive
+            key: USER
+            methods: [POST, PUT, PATCH]
+            paths:
+              - /api/v1/auth/change-password
+              - /api/v1/auth/change-phone/verify
+              - /api/v1/auth/logout-all-devices
+              - /api/v1/auth/corporate/employees/**
+            replenish-rate: 1
+            burst-capacity: 60
+            requested-tokens: 6
+            enforce: false
+          - id: booking-create
+            key: USER
+            methods: [POST]
+            paths:
+              - /api/v1/bookings/landlords
+              - /api/v1/landings/landlords
+              - /api/v1/quickstops/landlords
+            replenish-rate: 1
+            burst-capacity: 60
+            requested-tokens: 5
+            enforce: false
+          - id: payments
+            key: USER
+            methods: [POST, PUT, PATCH, DELETE]
+            paths:
+              - /api/v1/payments/**
+            replenish-rate: 1
+            burst-capacity: 60
+            requested-tokens: 6
+            enforce: false
+          - id: search
+            key: USER
+            paths:
+              - /api/v1/search/**
+            replenish-rate: 10
+            burst-capacity: 30
+            requested-tokens: 1
+            enforce: false
+          - id: profile
+            key: USER
+            paths:
+              - /api/v1/requester/profile/**
+              - /api/v1/requesters/**
+              - /api/v1/requester/storage/**
+              - /api/v1/landlords/profile/**
+              - /api/v1/corporate/organizations/**
+            replenish-rate: 10
+            burst-capacity: 30
+            requested-tokens: 1
+            enforce: false
+          - id: admin
+            key: ADMIN
+            paths:
+              - /api/v1/admin/**
+            exclude-paths:
+              - /api/v1/admin/app-versions/check
+            replenish-rate: 30
+            burst-capacity: 60
+            requested-tokens: 1
+            enforce: false
+          - id: default-user
+            key: USER
+            paths:
+              - /**
+            replenish-rate: 20
+            burst-capacity: 60
+            requested-tokens: 1
+            enforce: false
+
     # Forgot-password OTP check, all profiles. true = a code is sent (notification-service OTP) and must be
     # verified before choosing a new password. Set to false only to TEMPORARILY skip it (no code is sent).
     password-reset:
@@ -193,6 +376,17 @@ data:
             jwt:
               issuer-uri: http://keycloak:8180/realms/landers-realm
               jwk-set-uri: http://keycloak:8180/realms/landers-realm/protocol/openid-connect/certs
+      # Rate-limit Redis (QA shadow mode). Logical DB 1 keeps the gateway's keys apart from the services' caches in DB 0. The QA
+      # Redis has NO password today, so none is configured. NEVER write one here: when an authenticated Redis exists, inject it as
+      # the SPRING_DATA_REDIS_PASSWORD environment variable from the existing Kubernetes Secret (secretKeyRef) / Infisical.
+      # Short timeouts so a Redis outage costs a request at most ~200ms before the in-memory fallback takes over.
+      data:
+        redis:
+          host: redis-db
+          port: 6379
+          database: 1
+          timeout: 200ms
+          connect-timeout: 200ms
       kafka:
         bootstrapServers: kafka-broker:9092
         groupId: gateway-service-group
@@ -274,6 +468,18 @@ data:
                     # not a separate service.
                     - Path=/api/v1/notifications/**,/api/v1/otp/**
 
+    # --- API rate limiting: QA SHADOW MODE (Step 2). Counts only: every rule is enforce=false and ip-hops-verified stays false,
+    # so NOTHING is rejected. Roll back by setting enabled: false (see the rollback notes in the change description). ---
+    landers:
+      rate-limit:
+        enabled: true
+        # TEMPORARY - REMOVE once the real X-Forwarded-For chain has been read and trusted-proxy-hops is set. Public client IPs are
+        # masked (last octet) in this log; Loki keeps logs forever (retention_period 0s), so do not leave it on.
+        debug:
+          enabled: true
+          sample-every: 20
+          mask-public-ips: true
+
     management:
       health:
         redis:
@@ -305,6 +511,10 @@ data:
       level:
         root: INFO
         io.landers: INFO
+        # Spring's RedisRateLimiter logs a full stack trace at ERROR on EVERY failed Redis call; during a Redis outage that would
+        # flood the logs. The outage stays visible through landers_ratelimit_requests_total{outcome="redis_error"} and the single
+        # throttled WARN line (at most one per minute) from RateLimitService.
+        org.springframework.cloud.gateway.filter.ratelimit.RedisRateLimiter: "OFF"
 
     ---
     # --- 4. PROD PROFILE ---
