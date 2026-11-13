@@ -2,7 +2,7 @@ nameOverride: search-service
 
 image:
   repository: ghcr.io/landersfolk/search-service
-  tag: "89adf62"
+  tag: "de4cbc3"
   pullPolicy: Always
 
 containerPort: 7079
